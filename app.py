@@ -156,16 +156,17 @@ def seed_data():
 # Create DB Tables
 with app.app_context():
     db.create_all()
-    # Auto-drop unique pin constraint in PostgreSQL if it exists
+    # Auto-drop unique pin constraint in PostgreSQL and ensure avatar_url column exists
     if "postgresql" in app.config.get('SQLALCHEMY_DATABASE_URI', ''):
         try:
             from sqlalchemy import text
             db.session.execute(text("ALTER TABLE employees DROP CONSTRAINT IF EXISTS employees_pin_key CASCADE;"))
+            db.session.execute(text("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
             db.session.commit()
-            logging.info("Auto-dropped unique pin constraint in PostgreSQL.")
+            logging.info("PostgreSQL Schema Check: Dropped unique pin key and ensured avatar_url column exists.")
         except Exception as db_err:
             db.session.rollback()
-            logging.error(f"Error auto-dropping unique constraint in PostgreSQL: {db_err}")
+            logging.error(f"Error executing schema migrations in PostgreSQL: {db_err}")
     seed_data()
     
     # One-off clean up: Delete all Leave and WFH requests and checkin records
