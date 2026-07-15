@@ -1,0 +1,2288 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cổng Tra Cứu Chấm Công FaceID - Hanet AI</title>
+    <meta name="description" content="Hệ thống hiển thị và tra cứu lịch sử chấm công FaceID từ Camera AI Hanet.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Flatpickr CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <!-- Favicon -->
+    <link rel="icon" type="image/jpeg" href="/static/favicon.jpg">
+</head>
+<body>
+    <!-- Background glow bubbles -->
+    <div class="glow-bubble bubble-1"></div>
+    <div class="glow-bubble bubble-2"></div>
+    <div class="glow-bubble bubble-3"></div>
+
+    <div class="app-container">
+        <!-- Sidebar or Header -->
+        <header class="app-header">
+            <div class="logo-area">
+                <div class="logo-icon" style="padding: 0; background: transparent; display: flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 50%; overflow: hidden; border: 2px solid var(--glass-border);">
+                    <img src="/static/favicon.jpg" alt="Favicon" style="width: 100%; height: 100%; object-fit: cover;">
+                </div>
+                <div>
+                    <h1 id="main-title">KIMQ ATTENDANCE</h1>
+                    <p class="subtitle">Tra cứu chấm công</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <span class="status-badge" id="camera-status">
+                    <span class="status-dot"></span>
+                    Hanet
+                </span>
+                <div class="user-menu-container" style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem;">
+                    <button class="btn-admin" id="admin-login-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                        <span>Admin</span>
+                    </button>
+                    <button class="btn-change-pin hidden" id="employee-change-pin-btn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 11px; height: 11px;">
+                            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                        </svg>
+                        <span>Đổi mã PIN</span>
+                    </button>
+                </div>
+                <button class="theme-toggle" id="theme-toggle-btn" aria-label="Đổi giao diện">
+                    <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats Bar -->
+        <section class="stats-container">
+            <div class="stat-card">
+                <div class="stat-info">
+                    <p class="stat-label">Tổng lượt quét hôm nay</p>
+                    <h3 class="stat-value" id="stat-total">0</h3>
+                </div>
+                <div class="stat-icon icon-blue">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-info">
+                    <p class="stat-label">Nhân sự đã check-in</p>
+                    <h3 class="stat-value" id="stat-unique">0</h3>
+                </div>
+                <div class="stat-icon icon-purple">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-info">
+                    <p class="stat-label">Check-in mới nhất</p>
+                    <h3 class="stat-value" id="stat-latest">--:--:--</h3>
+                </div>
+                <div class="stat-icon icon-green">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Dashboard Content -->
+        <main class="dashboard-grid">
+            <!-- Left Side: Controls & Feed -->
+            <section class="feed-section glass-panel">
+                <div class="panel-header">
+                    <h2>Nhật ký chấm công</h2>
+                    <div style="display: flex; gap: 0.75rem; align-items: center;">
+                        <div id="feed-header-actions" style="display: flex; align-items: center; gap: 0.5rem;"></div>
+                        <button class="btn-refresh hidden" id="manual-checkin-btn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 1rem; height: 1rem;">
+                                <line x1="12" y1="5" x2="12" y2="19"></line>
+                                <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                            Thêm công
+                        </button>
+                         <button class="btn-refresh" id="refresh-btn" aria-label="Tải lại">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                            </svg>
+                            Làm mới
+                        </button>
+                        <!-- Export Excel button -->
+                        <button class="btn-refresh hidden" id="export-btn" style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981;" title="Xuất file Excel/CSV">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 1rem; height: 1rem;">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                            </svg>
+                            Xuất Excel
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Filters -->
+                <div class="filter-bar">
+                    <div class="search-box">
+                        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"></circle>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                        </svg>
+                        <input type="text" id="search-input" placeholder="Nhập chính xác Mã nhân viên để tra cứu...">
+                    </div>
+                    <div class="date-range-container">
+                        <div class="date-input-group">
+                            <span class="date-input-label">Từ ngày</span>
+                            <div class="date-picker-box">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="date-icon">
+                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                                </svg>
+                                <input type="text" id="date-from" placeholder="Từ ngày..." aria-label="Từ ngày">
+                            </div>
+                        </div>
+                        <div class="date-input-group">
+                            <span class="date-input-label">Đến ngày</span>
+                            <div class="date-picker-box">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="date-icon">
+                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                                </svg>
+                                <input type="text" id="date-to" placeholder="Đến ngày..." aria-label="Đến ngày">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Attendance List -->
+                <div class="attendance-list" id="attendance-feed">
+                    <!-- Loading indicator -->
+                    <div class="feed-status" id="feed-loading">
+                        <div class="spinner"></div>
+                        <p>Đang tải dữ liệu...</p>
+                    </div>
+                    
+                    <!-- Empty state -->
+                    <div class="feed-status hidden" id="feed-empty">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="48" height="48">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                        </svg>
+                        <p>Không tìm thấy dữ liệu chấm công cho ngày này.</p>
+                    </div>
+
+                    <!-- Items container -->
+                    <div class="feed-container hidden" id="feed-container"></div>
+                </div>
+            </section>
+
+            <!-- Employee Requests Panel (Only visible to logged-in employees) -->
+            <section class="glass-panel hidden" id="employee-requests-panel" style="margin-top: 1.5rem;">
+                <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h2>Yêu Cầu Bổ Sung Công</h2>
+                    <button class="btn-refresh" id="request-checkin-btn" style="background: rgba(168, 85, 247, 0.1); border-color: rgba(168, 85, 247, 0.2); color: #a855f7; display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; padding: 0.4rem 0.8rem;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.85rem; height: 0.85rem;">
+                            <path d="M12 5v14M5 12h14"/>
+                        </svg>
+                        Gửi Yêu Cầu
+                    </button>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                    Danh sách các yêu cầu bổ sung giờ chấm công (quên quẹt Vào/Ra) bạn đã gửi lên Ban quản trị.
+                </p>
+                <div class="employee-list-container" style="max-height: 250px; overflow-y: auto; overflow-x: auto; padding-right: 0.25rem;">
+                    <table class="admin-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--glass-border); color: var(--text-secondary); font-size: 0.75rem; text-transform: uppercase;">
+                                <th style="padding: 0.5rem 0.25rem;">Ngày yêu cầu</th>
+                                <th style="padding: 0.5rem 0.25rem;">Loại bổ sung</th>
+                                <th style="padding: 0.5rem 0.25rem;">Lý do</th>
+                                <th style="padding: 0.5rem 0.25rem; text-align: right;">Trạng thái</th>
+                            </tr>
+                        </thead>
+                        <tbody id="employee-requests-tbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Right Side Column -->
+            <div class="right-column-container" style="display: flex; flex-direction: column; gap: 1.5rem;">
+                <!-- Right Side: Analytics & Chart -->
+                <section class="analytics-section glass-panel">
+                    <div class="panel-header">
+                        <h2>Mật Độ Check-in Hôm Nay</h2>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <p class="chart-desc">Số lượt check-in ghi nhận theo từng khung giờ trong ngày</p>
+                        <div class="bar-chart" id="hourly-chart">
+                            <!-- Bars populated by JS -->
+                        </div>
+                    </div>
+
+                    <div class="guide-box">
+                        <h3>💡 Hướng Dẫn Tích Hợp Webhook</h3>
+                        <p>Ứng dụng này đang sẵn sàng nhận dữ liệu trực tiếp từ camera Hanet của bạn.</p>
+                        <div class="webhook-url-display">
+                            <span class="url-label">Webhook URL:</span>
+                            <code id="webhook-url">https://domain-cua-ban.railway.app/webhook/hanet</code>
+                        </div>
+                        <p class="guide-note">Cấu hình URL này vào trang **HANET Developers** tại mục Webhook của bạn để đồng bộ dữ liệu thời gian thực.</p>
+                    </div>
+                </section>
+
+                <!-- Admin Employee PIN Management Panel -->
+                <section class="admin-only glass-panel hidden" id="admin-employee-panel">
+                    <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <h2>Quản Lý PIN Nhân Sự</h2>
+                        <button class="btn-refresh" id="admin-change-pw-btn" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.35rem;" title="Đổi mật khẩu Admin">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.8rem; height: 0.8rem;">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                            </svg>
+                            Đổi Pass Admin
+                        </button>
+                    </div>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                        Trạng thái thiết lập mã PIN của từng nhân viên. Admin chỉ cần bấm Reset để xóa mã PIN cũ nếu nhân sự quên.
+                    </p>
+                    <div class="employee-list-container" style="max-height: 250px; overflow-y: auto; padding-right: 0.25rem;">
+                        <table class="admin-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--glass-border); color: var(--text-secondary); font-size: 0.75rem; text-transform: uppercase;">
+                                    <th style="padding: 0.5rem 0.25rem;">Nhân sự</th>
+                                    <th style="padding: 0.5rem 0.25rem;">PIN Bảo Mật</th>
+                                    <th style="padding: 0.5rem 0.25rem; text-align: right;">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-employee-tbody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Admin Attendance Correction Approval Panel -->
+                <section class="admin-only glass-panel hidden" id="admin-requests-panel">
+                    <div class="panel-header">
+                        <h2>Duyệt Yêu Cầu Bổ Sung Công</h2>
+                    </div>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                        Danh sách yêu cầu bổ sung giờ chấm công (quên quẹt thẻ Vào/Ra) từ nhân sự đang chờ xét duyệt.
+                    </p>
+                    <div class="employee-list-container" style="max-height: 300px; overflow-y: auto; overflow-x: auto; padding-right: 0.25rem;">
+                        <table class="admin-table" style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--glass-border); color: var(--text-secondary); font-size: 0.75rem; text-transform: uppercase;">
+                                    <th style="padding: 0.5rem 0.25rem;">Nhân sự</th>
+                                    <th style="padding: 0.5rem 0.25rem;">Ngày xin</th>
+                                    <th style="padding: 0.5rem 0.25rem;">Loại</th>
+                                    <th style="padding: 0.5rem 0.25rem;">Lý do</th>
+                                    <th style="padding: 0.5rem 0.25rem; text-align: right;">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="admin-requests-tbody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer class="app-footer">
+            <p>&copy; 2026 HANET AI Reader. Powered by Railway Cloud.</p>
+        </footer>
+    </div>
+
+    <!-- System Login Modal -->
+    <div class="modal-overlay" id="admin-modal">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h2>Đăng Nhập Hệ Thống</h2>
+                <button class="modal-close" id="admin-modal-close" aria-label="Đóng">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="login-username">Tài khoản Admin / CEO</label>
+                    <input type="text" id="login-username" placeholder="Ví dụ: admin, ceo..." style="text-transform: uppercase;">
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Mật khẩu</label>
+                    <input type="password" id="login-password" placeholder="Nhập mật khẩu quản trị...">
+                </div>
+                <div class="modal-error hidden" id="admin-login-error"></div>
+                <button class="btn-submit" id="admin-submit-btn">Đăng nhập</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Check-In Modal -->
+    <div class="modal-overlay" id="manual-modal">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h2>Thêm Lượt Chấm Công Thủ Công</h2>
+                <button class="modal-close" id="manual-modal-close" aria-label="Đóng">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="manual-name">Tên nhân viên</label>
+                    <input type="text" id="manual-name" placeholder="Ví dụ: Phước">
+                </div>
+                <div class="form-group">
+                    <label for="manual-alias">Mã nhân viên (Alias ID) - Không bắt buộc</label>
+                    <input type="text" id="manual-alias" placeholder="Ví dụ: CC_Phuoc">
+                </div>
+                <div class="form-group">
+                    <label for="manual-date">Ngày chấm công</label>
+                    <input type="date" id="manual-date">
+                </div>
+                <div class="form-group">
+                    <label for="manual-time">Giờ chấm công</label>
+                    <input type="time" id="manual-time" step="1">
+                </div>
+                <div class="modal-error hidden" id="manual-error-msg"></div>
+                <button class="btn-submit" id="manual-submit-btn">Lưu lượt chấm công</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attendance Correction Request Modal -->
+    <div class="modal-overlay" id="request-modal">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h2>Yêu Cầu Bổ Sung Công</h2>
+                <button class="modal-close" id="request-modal-close" aria-label="Đóng">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-row" style="display: flex; gap: 0.75rem; margin-bottom: 1rem;">
+                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                        <label id="request-date-label" for="request-date-picker">Ngày cần bổ sung</label>
+                        <input type="text" id="request-date-picker" placeholder="Chọn ngày...">
+                    </div>
+                    <div class="form-group hidden" id="request-end-date-container" style="flex: 1; margin-bottom: 0;">
+                        <label for="request-end-date-picker">Đến ngày</label>
+                        <input type="text" id="request-end-date-picker" placeholder="Chọn ngày kết thúc...">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="request-type">Loại bổ sung</label>
+                    <select id="request-type" style="width: 100%; background: var(--bg-main); border: 1px solid var(--glass-border); border-radius: 0.75rem; color: var(--text-primary); padding: 0.75rem; font-size: 0.9rem; outline: none; transition: all 0.3s ease;">
+                        <option value="both">Bổ sung Cả Hai (Vào 9:00 & Ra 18:00)</option>
+                        <option value="checkin">Bổ sung Giờ Vào (09:00)</option>
+                        <option value="checkout">Bổ sung Giờ Ra (18:00)</option>
+                        <option value="leave">Xin nghỉ phép (Giờ vào 9:00 & Ra 18:00) [Ký hiệu: P]</option>
+                        <option value="wfh">Work from home (Giờ vào 9:00 & Ra 18:00) [Ký hiệu: H]</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="request-reason">Lý do xin bổ sung công</label>
+                    <textarea id="request-reason" placeholder="Ví dụ: Quên quẹt thẻ lúc ra, Quên quẹt lúc vào..." rows="3" style="width: 100%; background: var(--bg-main); border: 1px solid var(--glass-border); border-radius: 0.75rem; color: var(--text-primary); padding: 0.75rem; font-size: 0.9rem; outline: none; resize: vertical; transition: all 0.3s ease;"></textarea>
+                </div>
+                <div class="modal-error hidden" id="request-error-msg"></div>
+                <button class="btn-submit" id="request-submit-btn">Gửi yêu cầu xét duyệt</button>
+            </div>
+        </div>
+    </div>
+
+
+
+    <!-- Admin Change Password Modal -->
+    <div class="modal-overlay" id="admin-password-modal">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h2>Đổi Mật Khẩu Admin</h2>
+                <button class="modal-close" id="admin-password-modal-close" aria-label="Đóng">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="admin-current-pw">Mật khẩu hiện tại</label>
+                    <input type="password" id="admin-current-pw" placeholder="Nhập mật khẩu hiện tại...">
+                </div>
+                <div class="form-group">
+                    <label for="admin-new-pw">Mật khẩu mới (tối thiểu 6 ký tự)</label>
+                    <input type="password" id="admin-new-pw" placeholder="Nhập mật khẩu mới...">
+                </div>
+                <div class="form-group">
+                    <label for="admin-confirm-pw">Xác nhận mật khẩu mới</label>
+                    <input type="password" id="admin-confirm-pw" placeholder="Nhập lại mật khẩu mới...">
+                </div>
+                <div class="modal-error hidden" id="admin-password-error"></div>
+                <button class="btn-submit" id="admin-password-submit-btn">Cập nhật mật khẩu</button>
+            </div>
+        </div>
+    </div>
+    <!-- Employee Change PIN Modal -->
+    <div class="modal-overlay" id="employee-pin-modal">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h2>Đổi Mật Khẩu PIN Cá Nhân</h2>
+                <button class="modal-close" id="employee-pin-modal-close" aria-label="Đóng">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="emp-current-pin">Mã PIN hiện tại</label>
+                    <input type="password" id="emp-current-pin" placeholder="Nhập mã PIN hiện tại...">
+                </div>
+                <div class="form-group">
+                    <label for="emp-new-pin">Mã PIN mới (6 chữ số)</label>
+                    <input type="password" id="emp-new-pin" placeholder="Nhập mã PIN mới...">
+                </div>
+                <div class="form-group">
+                    <label for="emp-confirm-pin">Xác nhận mã PIN mới</label>
+                    <input type="password" id="emp-confirm-pin" placeholder="Nhập lại mã PIN mới...">
+                </div>
+                <div class="modal-error hidden" id="emp-pin-error-msg"></div>
+                <button class="btn-submit" id="emp-pin-submit-btn">Cập nhật mã PIN</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flatpickr JS -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+    <!-- SheetJS (xlsx) for native Excel export -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <!-- JavaScript -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Setup DOM Elements
+            const searchInput = document.getElementById('search-input');
+            const dateFromInput = document.getElementById('date-from');
+            const dateToInput = document.getElementById('date-to');
+            const refreshBtn = document.getElementById('refresh-btn');
+            const exportBtn = document.getElementById('export-btn');
+            const themeToggleBtn = document.getElementById('theme-toggle-btn');
+            const feedContainer = document.getElementById('feed-container');
+            const feedLoading = document.getElementById('feed-loading');
+            const feedEmpty = document.getElementById('feed-empty');
+            
+            // Admin DOM Elements
+            const adminLoginBtn = document.getElementById('admin-login-btn');
+            const adminModal = document.getElementById('admin-modal');
+            const adminModalClose = document.getElementById('admin-modal-close');
+            const loginUsernameInput = document.getElementById('login-username');
+            const adminPasswordInput = document.getElementById('login-password');
+            const adminSubmitBtn = document.getElementById('admin-submit-btn');
+            const adminLoginError = document.getElementById('admin-login-error');
+            
+            // Manual Checkin DOM Elements
+            const manualCheckinBtn = document.getElementById('manual-checkin-btn');
+            const manualModal = document.getElementById('manual-modal');
+            const manualModalClose = document.getElementById('manual-modal-close');
+            const manualSubmitBtn = document.getElementById('manual-submit-btn');
+            const manualNameInput = document.getElementById('manual-name');
+            const manualAliasInput = document.getElementById('manual-alias');
+            const manualDateInput = document.getElementById('manual-date');
+            const manualTimeInput = document.getElementById('manual-time');
+            const manualErrorMsg = document.getElementById('manual-error-msg');
+            
+            const statsContainer = document.querySelector('.stats-container');
+            const analyticsSection = document.querySelector('.analytics-section');
+            
+            // Correction requests DOM Elements
+            const requestModal = document.getElementById('request-modal');
+            const requestModalClose = document.getElementById('request-modal-close');
+            const requestCheckinBtn = document.getElementById('request-checkin-btn');
+            const requestDatePicker = document.getElementById('request-date-picker');
+            const requestEndDatePicker = document.getElementById('request-end-date-picker');
+            const requestEndDateContainer = document.getElementById('request-end-date-container');
+            const requestDateLabel = document.getElementById('request-date-label');
+            const requestTypeSelect = document.getElementById('request-type');
+            const requestReasonText = document.getElementById('request-reason');
+            const requestSubmitBtn = document.getElementById('request-submit-btn');
+            const requestErrorMsg = document.getElementById('request-error-msg');
+            
+            const empRequestsPanel = document.getElementById('employee-requests-panel');
+            const empRequestsTbody = document.getElementById('employee-requests-tbody');
+            const adminRequestsPanel = document.getElementById('admin-requests-panel');
+            const adminRequestsTbody = document.getElementById('admin-requests-tbody');
+
+            let isUserAdmin = false;
+            let adminRole = null;
+            let isUserLoggedIn = false;
+            let loggedInEmployeeName = '';
+            let currentRecords = [];
+            
+            // Get local date string YYYY-MM-DD
+            const getLocalDateString = () => {
+                const localDate = new Date();
+                const yyyy = localDate.getFullYear();
+                const mm = String(localDate.getMonth() + 1).padStart(2, '0');
+                const dd = String(localDate.getDate()).padStart(2, '0');
+                return `${yyyy}-${mm}-${dd}`;
+            };
+
+            const getAttendanceAnalysis = (checkInStr, checkOutStr) => {
+                const parseTimeToMinutes = (tStr) => {
+                    if (!tStr) return 0;
+                    const parts = tStr.split(':');
+                    const h = parseInt(parts[0], 10) || 0;
+                    const m = parseInt(parts[1], 10) || 0;
+                    const s = parts.length > 2 ? parseInt(parts[2], 10) : 0;
+                    return h * 60 + m + s / 60;
+                };
+
+                const formatMinutesToTime = (totalMin) => {
+                    const h = Math.floor(totalMin / 60);
+                    const m = Math.floor(totalMin % 60);
+                    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                };
+
+                const T_in = parseTimeToMinutes(checkInStr);
+                const isLate = T_in > 555; // After 09:15:00
+                const lateMinutes = isLate ? Math.round(T_in - 540) : 0; // Late relative to 09:00 standard
+
+                if (!checkOutStr) {
+                    return {
+                        isLate,
+                        lateMinutes,
+                        isMissingCheckout: true,
+                        isEarlyLeave: false,
+                        earlyLeaveMinutes: 0,
+                        isInsufficient: false,
+                        workHours: 0,
+                        targetCheckoutStr: ''
+                    };
+                }
+
+                const T_out = parseTimeToMinutes(checkOutStr);
+
+                // Calculate actual work hours
+                const duration = T_out - T_in;
+                // Overlap with lunch break [12:00, 13:30] = [720, 810]
+                const lunchStart = 720;
+                const lunchEnd = 810;
+                const overlapStart = Math.max(T_in, lunchStart);
+                const overlapEnd = Math.min(T_out, lunchEnd);
+                const overlap = Math.max(0, overlapEnd - overlapStart);
+
+                const netWorkMinutes = duration - overlap;
+                const workHours = Math.round((netWorkMinutes / 60) * 10) / 10; // Round to 1 decimal place
+
+                // Determine target checkout time to achieve 7.5 hours (450 minutes) of work
+                let T_start = T_in;
+                if (T_in < 540) {
+                    T_start = 540; // Starts at 09:00
+                } else if (T_in > 720 && T_in < 810) {
+                    T_start = 810; // Starts at 13:30 (after lunch break)
+                }
+
+                let T_target_out = 0;
+                if (T_start <= 720) {
+                    T_target_out = T_start + 450 + 90; // Add 1.5h lunch break
+                } else {
+                    T_target_out = T_start + 450;
+                }
+
+                const isEarlyLeave = T_out < 1080; // Strictly before 18:00 (1080 minutes)
+                const earlyLeaveMinutes = isEarlyLeave ? Math.round(1080 - T_out) : 0;
+                const isInsufficient = workHours < 7.5;
+
+                return {
+                    isLate,
+                    lateMinutes,
+                    isMissingCheckout: false,
+                    isEarlyLeave,
+                    earlyLeaveMinutes,
+                    isInsufficient,
+                    workHours,
+                    targetCheckoutStr: formatMinutesToTime(T_target_out)
+                };
+            };
+            
+            const todayStr = getLocalDateString();
+            
+            const parseYYYYMMDD = (str) => {
+                if (!str) return new Date();
+                const parts = str.split('-');
+                return new Date(parts[0], parts[1] - 1, parts[2]);
+            };
+
+            const validateAndLoad = () => {
+                const fromVal = dateFromInput.value;
+                const toVal = dateToInput.value;
+                if (fromVal && toVal) {
+                    if (fromVal > toVal) {
+                        fpTo.setDate(fromVal, true);
+                        return;
+                    }
+                    const start = parseYYYYMMDD(fromVal);
+                    const end = parseYYYYMMDD(toVal);
+                    const diffTime = end - start;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    if (diffDays > 30) {
+                        alert("Khoảng thời gian chọn không được vượt quá 30 ngày (1 tháng)!");
+                        fpTo.setDate(fromVal, true);
+                        return;
+                    }
+                    loadData();
+                }
+            };
+
+            // Initialize separate Flatpickrs for From Date and To Date
+            const fpFrom = flatpickr(dateFromInput, {
+                altInput: true,
+                altFormat: "d/m/Y",
+                dateFormat: "Y-m-d",
+                defaultDate: todayStr,
+                onChange: function(selectedDates, dateStr, instance) {
+                    fpTo.set("minDate", dateStr);
+                    validateAndLoad();
+                },
+                onClose: function(selectedDates, dateStr, instance) {
+                    validateAndLoad();
+                }
+            });
+
+            const fpTo = flatpickr(dateToInput, {
+                altInput: true,
+                altFormat: "d/m/Y",
+                dateFormat: "Y-m-d",
+                defaultDate: todayStr,
+                onChange: function(selectedDates, dateStr, instance) {
+                    fpFrom.set("maxDate", dateStr);
+                    validateAndLoad();
+                },
+                onClose: function(selectedDates, dateStr, instance) {
+                    validateAndLoad();
+                }
+            });
+
+            // Set current domain in webhook guide
+            document.getElementById('webhook-url').innerText = window.location.origin + '/webhook/hanet';
+
+            // Theme Management
+            const getPreferredTheme = () => {
+                const storedTheme = localStorage.getItem('theme');
+                if (storedTheme) return storedTheme;
+                return 'dark'; // Default to dark theme for a premium dashboard look
+            };
+
+            const setTheme = (theme) => {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('theme', theme);
+            };
+
+            setTheme(getPreferredTheme());
+
+            themeToggleBtn.addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+            });
+
+            // Check Login Status on Load
+            const checkLoginStatus = async () => {
+                try {
+                    const response = await fetch('/api/status');
+                    const json = await response.json();
+                    isUserAdmin = json.is_admin;
+                    adminRole = json.admin_role || null;
+                    isUserLoggedIn = json.is_admin || !!json.employee_id;
+                    loggedInEmployeeName = json.employee_name || '';
+                    updateUIForLoginState();
+                } catch (e) {
+                    console.error("Error checking login status:", e);
+                }
+            };
+
+            const updateUIForLoginState = () => {
+                const empPanel = document.getElementById('admin-employee-panel');
+                const empChangePinBtn = document.getElementById('employee-change-pin-btn');
+                
+                // Stats and Charts are always visible to everyone
+                statsContainer.classList.remove('hidden');
+                analyticsSection.classList.remove('hidden');
+                
+                // Keep request panels hidden for everyone as requested
+                adminRequestsPanel.classList.add('hidden');
+                empRequestsPanel.classList.add('hidden');
+
+                if (isUserLoggedIn) {
+                    if (isUserAdmin) {
+                        // Admin Logged In
+                        if (exportBtn) exportBtn.classList.remove('hidden'); // Show export for Admin only
+                        if (empChangePinBtn) empChangePinBtn.classList.add('hidden');
+                        const roleLabel = adminRole === 'ceo' ? 'CEO' : 'Admin';
+                        adminLoginBtn.innerHTML = `
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+                            </svg>
+                            <span>Đăng xuất (${roleLabel})</span>
+                        `;
+                        adminLoginBtn.className = "btn-admin btn-admin-logout";
+                        
+                        manualCheckinBtn.classList.remove('hidden');
+                        if (empPanel) empPanel.classList.remove('hidden');
+                        
+                        searchInput.disabled = false;
+                        searchInput.placeholder = "Tìm kiếm tên nhân viên, mã nhân viên...";
+                        
+                        loadAdminEmployees();
+                    } else {
+                        // Employee Logged In
+                        if (exportBtn) exportBtn.classList.add('hidden'); // Hide export for Employee
+                        if (empChangePinBtn) empChangePinBtn.classList.remove('hidden');
+                        adminLoginBtn.innerHTML = `
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+                            </svg>
+                            <span>Đăng xuất</span>
+                        `;
+                        adminLoginBtn.className = "btn-admin btn-admin-logout";
+                        
+                        manualCheckinBtn.classList.add('hidden');
+                        if (empPanel) empPanel.classList.add('hidden');
+                        
+                        searchInput.disabled = false;
+                        searchInput.placeholder = "Tìm kiếm tên nhân viên, mã nhân viên...";
+                    }
+                } else {
+                    if (exportBtn) exportBtn.classList.add('hidden'); // Hide export for Public
+                    if (empChangePinBtn) empChangePinBtn.classList.add('hidden');
+                    
+                    // Not Logged In
+                    adminLoginBtn.innerHTML = `
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        <span>Đăng nhập</span>
+                    `;
+                    adminLoginBtn.className = "btn-admin";
+                    
+                    manualCheckinBtn.classList.add('hidden');
+                    if (empPanel) empPanel.classList.add('hidden');
+                    
+                    searchInput.disabled = false;
+                    searchInput.placeholder = "Nhập tên hoặc Mã nhân viên để tìm kiếm...";
+                }
+            };
+
+            const loadAdminEmployees = async () => {
+                if (!isUserAdmin) return;
+                try {
+                    const response = await fetch('/api/admin/employees');
+                    const json = await response.json();
+                    if (response.ok && json.status === 'success') {
+                        renderAdminEmployees(json.data);
+                    }
+                } catch (e) {
+                    console.error("Error loading employees:", e);
+                }
+            };
+
+            const renderAdminEmployees = (employees) => {
+                const tbody = document.getElementById('admin-employee-tbody');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                
+                if (employees.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: 1rem;">Chưa có dữ liệu nhân viên. Hãy đồng bộ lịch sử chấm công để tải danh sách.</td></tr>`;
+                    return;
+                }
+                
+                employees.forEach(emp => {
+                    const hasPin = emp.pin && emp.pin.length === 6;
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="padding: 0.75rem 0.25rem;">
+                            <div style="font-weight: 600; color: var(--text-primary);">${escapeHtml(emp.name)}</div>
+                            <div style="font-size: 0.72rem; color: var(--text-muted);">Mã: ${escapeHtml(emp.alias_id || emp.person_id)}</div>
+                        </td>
+                        <td style="padding: 0.75rem 0.25rem; vertical-align: middle;">
+                            <input type="password" class="pin-input" id="pin-${emp.person_id}" value="${escapeHtml(emp.pin || '')}" placeholder="Chưa đặt" maxlength="6" pattern="[0-9]*" inputmode="numeric" oninput="this.value = this.value.replace(/\\D/g, '')" disabled style="width: 75px; text-align: center; padding: 0.25rem 0.5rem; font-size: 0.85rem; border-radius: 0.35rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-primary);">
+                        </td>
+                        <td style="padding: 0.75rem 0.25rem; text-align: right; vertical-align: middle; white-space: nowrap;">
+                            <button class="btn-save-pin" id="btn-${emp.person_id}" onclick="togglePinEdit('${emp.person_id}')" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">Sửa</button>
+                            ${hasPin 
+                                ? `<button class="btn-save-pin" style="padding: 0.25rem 0.6rem; font-size: 0.75rem; background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 2px 6px rgba(239, 68, 68, 0.25); margin-left: 4px;" onclick="resetEmployeePin('${emp.person_id}', '${escapeHtml(emp.name)}')">Reset</button>` 
+                                : ''
+                            }
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            };
+
+            window.togglePinEdit = async (personId) => {
+                const pinInput = document.getElementById(`pin-${personId}`);
+                const btn = document.getElementById(`btn-${personId}`);
+                if (!pinInput || !btn) return;
+                
+                if (pinInput.disabled) {
+                    // Clicked "Sửa": unlock input, reveal PIN
+                    pinInput.disabled = false;
+                    pinInput.type = "text";
+                    pinInput.focus();
+                    btn.innerText = "Lưu";
+                    btn.style.background = "linear-gradient(135deg, #10b981, #059669)"; // Make it green for saving
+                } else {
+                    // Clicked "Lưu": save to database
+                    const pin = pinInput.value.trim();
+                    if (pin !== "" && !/^\d{6}$/.test(pin)) {
+                        alert("Mã PIN phải gồm đúng 6 chữ số (0-9) hoặc để trống!");
+                        return;
+                    }
+                    try {
+                        const response = await fetch('/api/admin/employees/pin', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ person_id: personId, pin })
+                        });
+                        const json = await response.json();
+                        if (response.ok && json.status === 'success') {
+                            pinInput.disabled = true;
+                            pinInput.type = "password";
+                            btn.innerText = "Sửa";
+                            btn.style.background = ""; // Reset style
+                            alert(`Đã lưu Mã PIN cho nhân sự thành công!`);
+                            loadAdminEmployees();
+                        } else {
+                            alert(json.message || "Lỗi khi lưu Mã PIN");
+                        }
+                    } catch (e) {
+                        console.error("Error saving PIN:", e);
+                        alert("Lỗi kết nối máy chủ khi lưu PIN");
+                    }
+                }
+            };
+
+            window.resetEmployeePin = async (personId, name) => {
+                if (!confirm(`Bạn có chắc chắn muốn RESET (xóa) mã PIN của nhân viên "${name}" không?\nSau khi reset, nhân viên sẽ phải dùng mã PIN mới do bạn cấp.`)) {
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/admin/employees/reset-pin', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ person_id: personId })
+                    });
+                    const json = await response.json();
+                    if (response.ok && json.status === 'success') {
+                        alert(`Đã reset mã PIN cho nhân viên "${name}" thành công!`);
+                        loadAdminEmployees();
+                    } else {
+                        alert(json.message || "Lỗi khi reset mã PIN");
+                    }
+                } catch (e) {
+                    console.error("Error resetting PIN:", e);
+                    alert("Lỗi kết nối máy chủ khi reset PIN");
+                }
+            };
+
+            // Modal Interactions (Open Login or Trigger Logout)
+            adminLoginBtn.addEventListener('click', async () => {
+                if (isUserLoggedIn) {
+                    // Logout action
+                    try {
+                        const response = await fetch('/api/logout', { method: 'POST' });
+                        const json = await response.json();
+                        if (json.status === 'success') {
+                            isUserAdmin = false;
+                            adminRole = null;
+                            isUserLoggedIn = false;
+                            loggedInEmployeeName = '';
+                            updateUIForLoginState();
+                            loadData();
+                        }
+                    } catch (e) {
+                        console.error("Error logging out:", e);
+                    }
+                } else {
+                    // Open Login Modal
+                    loginUsernameInput.value = '';
+                    adminPasswordInput.value = '';
+                    adminLoginError.classList.add('hidden');
+                    adminModal.classList.add('active');
+                    loginUsernameInput.focus();
+                }
+            });
+
+            adminModalClose.addEventListener('click', () => {
+                adminModal.classList.remove('active');
+            });
+
+            // Close modal when clicking outside dialog
+            adminModal.addEventListener('click', (e) => {
+                if (e.target === adminModal) {
+                    adminModal.classList.remove('active');
+                }
+            });
+
+            // Manual Checkin Modal Interactions
+            manualCheckinBtn.addEventListener('click', () => {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const hour = String(now.getHours()).padStart(2, '0');
+                const minute = String(now.getMinutes()).padStart(2, '0');
+                const second = String(now.getSeconds()).padStart(2, '0');
+                
+                manualDateInput.value = `${year}-${month}-${day}`;
+                manualTimeInput.value = `${hour}:${minute}:${second}`;
+                
+                manualNameInput.value = '';
+                manualAliasInput.value = '';
+                manualErrorMsg.classList.add('hidden');
+                
+                manualModal.classList.add('active');
+            });
+
+            manualModalClose.addEventListener('click', () => {
+                manualModal.classList.remove('active');
+            });
+
+            manualModal.addEventListener('click', (e) => {
+                if (e.target === manualModal) {
+                    manualModal.classList.remove('active');
+                }
+            });
+
+            manualSubmitBtn.addEventListener('click', async () => {
+                const person_name = manualNameInput.value.trim();
+                const alias_id = manualAliasInput.value.trim();
+                const date = manualDateInput.value;
+                let time = manualTimeInput.value;
+                
+                if (!person_name || !date || !time) {
+                    manualErrorMsg.innerText = "Vui lòng nhập đầy đủ tên, ngày và giờ!";
+                    manualErrorMsg.classList.remove('hidden');
+                    return;
+                }
+                
+                if (time.split(':').length === 2) {
+                    time = time + ":00";
+                }
+                
+                manualErrorMsg.classList.add('hidden');
+                
+                try {
+                    const response = await fetch('/api/admin/checkin/manual', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ person_name, alias_id, date, time })
+                    });
+                    const json = await response.json();
+                    
+                    if (response.ok && json.status === 'success') {
+                        manualModal.classList.remove('active');
+                        loadData();
+                    } else {
+                        manualErrorMsg.innerText = json.message || "Lỗi lưu dữ liệu!";
+                        manualErrorMsg.classList.remove('hidden');
+                    }
+                } catch (e) {
+                    manualErrorMsg.innerText = "Lỗi kết nối máy chủ.";
+                    manualErrorMsg.classList.remove('hidden');
+                }
+            });
+
+            // Change PIN Modal Interactions
+            // Close Change PIN modal when clicking close button or overlay
+
+
+            // Admin Change Password Modal Interactions
+            const adminPasswordModal = document.getElementById('admin-password-modal');
+            const adminPasswordModalClose = document.getElementById('admin-password-modal-close');
+            const adminPasswordSubmitBtn = document.getElementById('admin-password-submit-btn');
+            const adminChangePwBtn = document.getElementById('admin-change-pw-btn');
+            
+            const adminCurrentPwInput = document.getElementById('admin-current-pw');
+            const adminNewPwInput = document.getElementById('admin-new-pw');
+            const adminConfirmPwInput = document.getElementById('admin-confirm-pw');
+            const adminPasswordError = document.getElementById('admin-password-error');
+
+            if (adminChangePwBtn) {
+                adminChangePwBtn.addEventListener('click', () => {
+                    adminCurrentPwInput.value = '';
+                    adminNewPwInput.value = '';
+                    adminConfirmPwInput.value = '';
+                    adminPasswordError.classList.add('hidden');
+                    adminPasswordModal.classList.add('active');
+                    adminCurrentPwInput.focus();
+                });
+            }
+
+            adminPasswordModalClose.addEventListener('click', () => {
+                adminPasswordModal.classList.remove('active');
+            });
+
+            adminPasswordModal.addEventListener('click', (e) => {
+                if (e.target === adminPasswordModal) {
+                    adminPasswordModal.classList.remove('active');
+                }
+            });
+
+            adminConfirmPwInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    handleAdminPasswordSubmit();
+                }
+            });
+
+            const handleAdminPasswordSubmit = async () => {
+                const currentPw = adminCurrentPwInput.value;
+                const newPw = adminNewPwInput.value;
+                const confirmPw = adminConfirmPwInput.value;
+                
+                if (!currentPw || !newPw) {
+                    adminPasswordError.innerText = "Vui lòng điền đầy đủ thông tin!";
+                    adminPasswordError.classList.remove('hidden');
+                    return;
+                }
+                
+                if (newPw.length < 6) {
+                    adminPasswordError.innerText = "Mật khẩu mới phải có tối thiểu 6 ký tự!";
+                    adminPasswordError.classList.remove('hidden');
+                    return;
+                }
+                
+                if (newPw !== confirmPw) {
+                    adminPasswordError.innerText = "Mật khẩu mới và xác nhận chưa khớp!";
+                    adminPasswordError.classList.remove('hidden');
+                    return;
+                }
+                
+                adminPasswordError.classList.add('hidden');
+                
+                try {
+                    const response = await fetch('/api/admin/change-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ current_password: currentPw, new_password: newPw })
+                    });
+                    const json = await response.json();
+                    
+                    if (response.ok && json.status === 'success') {
+                        adminPasswordModal.classList.remove('active');
+                        alert("Thay đổi mật khẩu Admin thành công!");
+                    } else {
+                        adminPasswordError.innerText = json.message || "Lỗi khi thay đổi mật khẩu!";
+                        adminPasswordError.classList.remove('hidden');
+                    }
+                } catch (e) {
+                    adminPasswordError.innerText = "Lỗi kết nối máy chủ.";
+                    adminPasswordError.classList.remove('hidden');
+                }
+            };
+
+            adminPasswordSubmitBtn.addEventListener('click', handleAdminPasswordSubmit);
+
+            // Employee Change PIN Modal Interactions
+            const employeePinModal = document.getElementById('employee-pin-modal');
+            const employeePinModalClose = document.getElementById('employee-pin-modal-close');
+            const empPinSubmitBtn = document.getElementById('emp-pin-submit-btn');
+            const empChangePinBtn = document.getElementById('employee-change-pin-btn');
+            
+            const empCurrentPinInput = document.getElementById('emp-current-pin');
+            const empNewPinInput = document.getElementById('emp-new-pin');
+            const empConfirmPinInput = document.getElementById('emp-confirm-pin');
+            const empPinErrorMsg = document.getElementById('emp-pin-error-msg');
+
+            if (empChangePinBtn) {
+                empChangePinBtn.addEventListener('click', () => {
+                    empCurrentPinInput.value = '';
+                    empNewPinInput.value = '';
+                    empConfirmPinInput.value = '';
+                    empPinErrorMsg.classList.add('hidden');
+                    employeePinModal.classList.add('active');
+                    empCurrentPinInput.focus();
+                });
+            }
+
+            if (employeePinModalClose) {
+                employeePinModalClose.addEventListener('click', () => {
+                    employeePinModal.classList.remove('active');
+                });
+            }
+
+            if (employeePinModal) {
+                employeePinModal.addEventListener('click', (e) => {
+                    if (e.target === employeePinModal) {
+                        employeePinModal.classList.remove('active');
+                    }
+                });
+            }
+
+            if (empConfirmPinInput) {
+                empConfirmPinInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        handleEmployeePinSubmit();
+                    }
+                });
+            }
+
+            const handleEmployeePinSubmit = async () => {
+                const currentPin = empCurrentPinInput.value;
+                const newPin = empNewPinInput.value;
+                const confirmPin = empConfirmPinInput.value;
+                
+                if (!currentPin || !newPin) {
+                    empPinErrorMsg.innerText = "Vui lòng điền đầy đủ thông tin!";
+                    empPinErrorMsg.classList.remove('hidden');
+                    return;
+                }
+                
+                if (!/^\d{6}$/.test(newPin)) {
+                    empPinErrorMsg.innerText = "Mã PIN mới phải gồm đúng 6 chữ số!";
+                    empPinErrorMsg.classList.remove('hidden');
+                    return;
+                }
+                
+                if (newPin !== confirmPin) {
+                    empPinErrorMsg.innerText = "Mã PIN mới và xác nhận chưa khớp!";
+                    empPinErrorMsg.classList.remove('hidden');
+                    return;
+                }
+                
+                empPinErrorMsg.classList.add('hidden');
+                
+                try {
+                    const response = await fetch('/api/employee/change-pin', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ current_pin: currentPin, new_pin: newPin })
+                    });
+                    const json = await response.json();
+                    
+                    if (response.ok && json.status === 'success') {
+                        employeePinModal.classList.remove('active');
+                        alert("Thay đổi mã PIN thành công!");
+                    } else {
+                        empPinErrorMsg.innerText = json.message || "Lỗi khi thay đổi mã PIN!";
+                        empPinErrorMsg.classList.remove('hidden');
+                    }
+                } catch (e) {
+                    empPinErrorMsg.innerText = "Lỗi kết nối máy chủ.";
+                    empPinErrorMsg.classList.remove('hidden');
+                }
+            };
+
+            if (empPinSubmitBtn) {
+                empPinSubmitBtn.addEventListener('click', handleEmployeePinSubmit);
+            }
+
+            const handleLoginSubmit = async () => {
+                const username = loginUsernameInput.value.trim();
+                const password = adminPasswordInput.value;
+                
+                if (!username || !password) {
+                    adminLoginError.innerText = "Vui lòng nhập tài khoản và mật khẩu!";
+                    adminLoginError.classList.remove('hidden');
+                    return;
+                }
+
+                adminLoginError.classList.add('hidden');
+                
+                try {
+                    const response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                    const json = await response.json();
+
+                    if (response.ok && json.status === 'success') {
+                        isUserAdmin = json.is_admin;
+                        adminRole = json.admin_role || null;
+                        isUserLoggedIn = true;
+                        loggedInEmployeeName = json.employee_name || '';
+                        
+                        updateUIForLoginState();
+                        adminModal.classList.remove('active');
+                        loadData();
+                    } else {
+                        adminLoginError.innerText = json.message || "Sai tài khoản hoặc mật khẩu!";
+                        adminLoginError.classList.remove('hidden');
+                    }
+                } catch (e) {
+                    adminLoginError.innerText = "Lỗi kết nối máy chủ.";
+                    adminLoginError.classList.remove('hidden');
+                }
+            };
+
+            adminSubmitBtn.addEventListener('click', handleLoginSubmit);
+            adminPasswordInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    handleLoginSubmit();
+                }
+            });
+            loginUsernameInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    adminPasswordInput.focus();
+                }
+            });
+
+            // Fetch Checkins and Stats
+            const loadData = async (isSilent = false) => {
+                if (!isSilent) {
+                    feedContainer.classList.add('hidden');
+                    feedEmpty.classList.add('hidden');
+                    feedLoading.classList.remove('hidden');
+                }
+
+
+
+                const searchVal = searchInput.value.trim();
+                const fromVal = dateFromInput.value;
+                const toVal = dateToInput.value;
+
+                try {
+                    const response = await fetch(`/api/checkins?search=${encodeURIComponent(searchVal)}&start_date=${fromVal}&end_date=${toVal}`);
+                    const json = await response.json();
+
+                    if (response.ok && json.status === 'success') {
+                        currentRecords = json.data || [];
+                        // Keep admin state in sync with server session
+                        if (json.is_admin !== undefined && isUserAdmin !== json.is_admin) {
+                            isUserAdmin = json.is_admin;
+                            isUserLoggedIn = json.is_admin || json.logged_in;
+                            updateUIForLoginState();
+                        }
+                        if (isUserAdmin) {
+                            renderStats(json.stats);
+                            renderChart(json.stats.hour_chart);
+                        }
+                        renderFeed(json.data);
+
+                        const headerActions = document.getElementById('feed-header-actions');
+                        if (headerActions) headerActions.innerHTML = '';
+                    } else {
+                        if (!isSilent) showError(json.message);
+                        const headerActions = document.getElementById('feed-header-actions');
+                        if (headerActions) headerActions.innerHTML = '';
+                    }
+                } catch (e) {
+                    console.error("Error fetching data:", e);
+                    if (!isSilent) showError();
+                }
+            };
+
+            const renderStats = (stats) => {
+                document.getElementById('stat-total').innerText = stats.total_today;
+                document.getElementById('stat-unique').innerText = stats.unique_today;
+                document.getElementById('stat-latest').innerText = stats.latest_time;
+
+                const isRange = dateFromInput.value !== dateToInput.value;
+                const label1 = document.querySelector('.stats-container .stat-card:nth-child(1) .stat-label');
+                const label2 = document.querySelector('.stats-container .stat-card:nth-child(2) .stat-label');
+                const label3 = document.querySelector('.stats-container .stat-card:nth-child(3) .stat-label');
+                
+                if (label1 && label2 && label3) {
+                    if (isRange) {
+                        label1.innerText = "Tổng lượt quét trong kỳ";
+                        label2.innerText = "Nhân sự đã check-in";
+                        label3.innerText = "Lần quét gần nhất";
+                    } else {
+                        const isToday = dateFromInput.value === getLocalDateString();
+                        label1.innerText = isToday ? "Tổng lượt quét hôm nay" : "Tổng lượt quét trong ngày";
+                        label2.innerText = "Nhân sự đã check-in";
+                        label3.innerText = "Lần quét gần nhất";
+                    }
+                }
+            };
+
+            const renderFeed = (records) => {
+                try {
+                    feedLoading.classList.add('hidden');
+
+                    if (!records || records.length === 0) {
+                        feedContainer.innerHTML = '';
+                        feedContainer.classList.add('hidden');
+                        feedEmpty.classList.remove('hidden');
+                        feedEmpty.querySelector('p').innerText = isUserAdmin 
+                            ? "Không tìm thấy dữ liệu chấm công cho ngày này."
+                            : "Không tìm thấy dữ liệu chấm công khớp với tìm kiếm của bạn.";
+                        feedEmpty.querySelector('svg').innerHTML = `
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                        `;
+                        return;
+                    }
+
+                    // Group records by Employee ID + Date (to handle renames correctly)
+                    const grouped = {};
+                    records.forEach(record => {
+                        const datePart = (record.time || '').split(' ')[0] || '';
+                        const timePart = (record.time || '').split(' ')[1] || '';
+                        
+                        // Use person_id or alias_id if available, fallback to name
+                        const idPart = record.person_id || record.alias_id || record.person_name || 'unknown';
+                        const key = `${idPart}_${datePart}`;
+
+                        if (!grouped[key]) {
+                            grouped[key] = {
+                                person_name: record.person_name || '',
+                                alias_id: record.alias_id || '',
+                                person_id: record.person_id || '',
+                                avatar_url: record.avatar_url || '',
+                                place_name: record.place_name || '',
+                                date: datePart,
+                                scans: [],
+                                holiday_type: ''
+                            };
+                        } else {
+                            // Keep the longest/most complete name (e.g. "Dương Hồng Phước" > "Phước")
+                            const currentName = grouped[key].person_name || '';
+                            const recordName = record.person_name || '';
+                            if (recordName.length > currentName.length) {
+                                grouped[key].person_name = recordName;
+                            }
+                            if (record.avatar_url && !grouped[key].avatar_url) {
+                                grouped[key].avatar_url = record.avatar_url;
+                            }
+                        }
+
+                        // Extract holiday type from simulated check-in place names
+                        if (record.place_name === 'Nghỉ phép (P)') {
+                            grouped[key].holiday_type = 'P';
+                        } else if (record.place_name === 'Work From Home (H)') {
+                            grouped[key].holiday_type = 'H';
+                        }
+
+                        if (timePart) {
+                            grouped[key].scans.push(timePart);
+                        }
+                    });
+
+                    // Convert grouped object to array and sort by date desc
+                    const groupedList = Object.values(grouped).sort((a, b) => {
+                        const parseDate = (dStr) => {
+                            if (!dStr) return new Date(0);
+                            const parts = dStr.split('/');
+                            if (parts.length < 3) return new Date(0);
+                            return new Date(parts[2], parts[1] - 1, parts[0]);
+                        };
+                        return parseDate(b.date) - parseDate(a.date);
+                    });
+
+                    let newHTML = '';
+                    groupedList.forEach(group => {
+                        if (!group.scans || group.scans.length === 0) return;
+                        
+                        // Sort scans chronologically
+                        group.scans.sort();
+                        
+                        const checkInTime = group.scans[0]; // Earliest
+                        const checkOutTime = group.scans.length > 1 ? group.scans[group.scans.length - 1] : null; // Latest if different
+
+                        // Avatar logic
+                        let avatarHtml = '';
+                        if (group.avatar_url && group.avatar_url.trim() !== '') {
+                            avatarHtml = `<img src="${group.avatar_url}" alt="${group.person_name}" class="avatar-img">`;
+                        } else {
+                            const nameInitial = (group.person_name || 'U').charAt(0).toUpperCase();
+                            avatarHtml = `<div class="avatar-fallback">${nameInitial}</div>`;
+                        }
+
+                        // Tooltip text for all scans
+                        const allScansList = group.scans.join(', ');
+
+                        // Run work hour analysis
+                        const analysis = getAttendanceAnalysis(checkInTime, checkOutTime);
+                        
+                        let badgesHtml = '';
+                        if (analysis.isMissingCheckout) {
+                            badgesHtml += `
+                                <span style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                    </svg>
+                                    Thiếu quét RA
+                                </span>
+                            `;
+                        }
+                        
+                        if (analysis.isLate) {
+                            badgesHtml += `
+                                <span style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <polyline points="12 6 12 12 16 14"></polyline>
+                                    </svg>
+                                    Đi trễ (${analysis.lateMinutes} phút)
+                                </span>
+                            `;
+                        } else if (!analysis.isMissingCheckout) {
+                            badgesHtml += `
+                                <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
+                                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                                    </svg>
+                                    Đúng giờ
+                                </span>
+                            `;
+                        }
+
+                        if (!analysis.isMissingCheckout) {
+                            if (analysis.isEarlyLeave) {
+                                badgesHtml += `
+                                    <span style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
+                                            <polyline points="22 9 17 4 12 9"></polyline>
+                                            <polyline points="2 15 7 20 12 15"></polyline>
+                                            <line x1="17" y1="4" x2="17" y2="20"></line>
+                                            <line x1="7" y1="4" x2="7" y2="20"></line>
+                                        </svg>
+                                        Về sớm (${analysis.earlyLeaveMinutes} phút)
+                                    </span>
+                                `;
+                            }
+
+                            if (analysis.isInsufficient) {
+                                badgesHtml += `
+                                    <span style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
+                                            <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon>
+                                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                        </svg>
+                                        Chưa đủ công (${analysis.workHours}h / 7.5h)
+                                    </span>
+                                `;
+                            } else {
+                                badgesHtml += `
+                                    <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
+                                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                                        </svg>
+                                        Đủ công (${analysis.workHours}h)
+                                    </span>
+                                `;
+                            }
+                        }
+
+                        // Override badges if it is Leave (P) or WFH (H)
+                        if (group.holiday_type === 'P') {
+                            badgesHtml = `
+                                <span style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.25); color: #a855f7; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Nghỉ phép (P)
+                                </span>
+                                <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Đủ công (7.5h)
+                                </span>
+                            `;
+                        } else if (group.holiday_type === 'H') {
+                            badgesHtml = `
+                                <span style="background: rgba(14, 165, 233, 0.1); border: 1px solid rgba(14, 165, 233, 0.25); color: #0ea5e9; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Work From Home (H)
+                                </span>
+                                <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Đủ công (7.5h)
+                                </span>
+                            `;
+                        }
+
+                        newHTML += `
+                            <div class="attendance-card" style="flex-direction: column; align-items: stretch; gap: 0.75rem;">
+                                <!-- Card Top Row -->
+                                <div class="card-top-row" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                                    <div class="card-left">
+                                        ${avatarHtml}
+                                        <div class="user-meta">
+                                            <h4 class="user-name">${escapeHtml(group.person_name)}</h4>
+                                            <span class="user-id">ID: ${escapeHtml(group.alias_id || group.person_id || 'Chưa gán')}</span>
+                                            <div class="location-meta" style="margin-top: 0.25rem;">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="location-icon" style="width: 0.85rem; height: 0.85rem;">
+                                                    <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path>
+                                                    <circle cx="12" cy="10" r="3"></circle>
+                                                </svg>
+                                                <span style="font-size: 0.75rem;">${escapeHtml(group.place_name || 'Văn phòng')}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card-right" style="align-items: flex-end;">
+                                        <div class="date-badge" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">
+                                            Ngày: <strong>${group.date}</strong>
+                                        </div>
+                                        <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
+                                            <div class="time-badge green-badge">
+                                                <span class="badge-label">VÀO</span>
+                                                <span class="badge-time">${checkInTime}</span>
+                                            </div>
+                                            <div class="time-badge ${checkOutTime ? 'orange-badge' : 'grey-badge'}">
+                                                <span class="badge-label">RA</span>
+                                                <span class="badge-time">${checkOutTime || '--:--:--'}</span>
+                                            </div>
+                                        </div>
+                                        <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.4rem;" title="${allScansList}">
+                                            Chi tiết: ${group.scans.length} lần quét mặt
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Card Divider -->
+                                <div style="height: 1px; background: var(--glass-border); opacity: 0.3; width: 100%;"></div>
+                                
+                                <!-- Card Bottom Status Badges Row -->
+                                <div class="attendance-status-row" style="display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center;">
+                                    ${badgesHtml}
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    // Avoid clearing and re-rendering DOM nodes if HTML content has not changed
+                    if (feedContainer.innerHTML !== newHTML) {
+                        feedContainer.innerHTML = newHTML;
+                    }
+                    
+                    feedEmpty.classList.add('hidden');
+                    feedContainer.classList.remove('hidden');
+                } catch (err) {
+                    console.error("Error rendering check-in feed:", err);
+                    showError("Đã xảy ra lỗi hiển thị nhật ký chấm công.");
+                }
+            };
+
+            const renderChart = (hourCounts) => {
+                const chartElement = document.getElementById('hourly-chart');
+                chartElement.innerHTML = '';
+
+                // Get max value to scale chart height
+                const maxVal = Math.max(...hourCounts, 1);
+                
+                // Active hours between 7:00 and 19:00 (standard office hours) plus peak detections
+                for (let hour = 7; hour <= 19; hour++) {
+                    const count = hourCounts[hour] || 0;
+                    const heightPercent = (count / maxVal) * 100;
+
+                    const barCol = document.createElement('div');
+                    barCol.className = 'chart-bar-column';
+
+                    barCol.innerHTML = `
+                        <div class="bar-wrapper">
+                            <div class="bar-value ${count > 0 ? 'active' : ''}" style="height: ${Math.max(heightPercent, 4)}%">
+                                ${count > 0 ? `<span class="bar-count-tooltip">${count}</span>` : ''}
+                            </div>
+                        </div>
+                        <span class="bar-label">${hour}h</span>
+                    `;
+                    chartElement.appendChild(barCol);
+                }
+            };
+
+            const showError = (msg = "Đã xảy ra lỗi khi kết nối máy chủ.") => {
+                feedLoading.classList.add('hidden');
+                feedEmpty.classList.remove('hidden');
+                feedEmpty.querySelector('p').innerText = msg;
+            };
+
+            const escapeHtml = (unsafe) => {
+                return unsafe
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
+            };
+
+            // Event Listeners with Debouncing
+            let timer;
+            searchInput.addEventListener('input', () => {
+                clearTimeout(timer);
+timer = setTimeout(loadData, 300);
+            });
+
+            dateFromInput.addEventListener('change', loadData);
+            dateToInput.addEventListener('change', loadData);
+            refreshBtn.addEventListener('click', loadData);
+
+            const handleExport = () => {
+                if (typeof XLSX === 'undefined') {
+                    alert("Thư viện Excel đang tải, vui lòng thử lại sau vài giây!");
+                    return;
+                }
+
+                if (!currentRecords || currentRecords.length === 0) {
+                    alert("Không có dữ liệu để xuất file!");
+                    return;
+                }
+
+                // Helper to parse dd/mm/yyyy to Date object
+                const parseDate = (dStr) => {
+                    if (!dStr) return null;
+                    const parts = dStr.split('/');
+                    if (parts.length < 3) return null;
+                    return new Date(parts[2], parts[1] - 1, parts[0]);
+                };
+
+                // Helper to get Day of Week name in Vietnamese
+                const getDayOfWeekText = (dateStr) => {
+                    const parts = dateStr.split('/');
+                    if (parts.length < 3) return '';
+                    const d = new Date(parts[2], parts[1] - 1, parts[0]);
+                    const days = ["Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy"];
+                    return days[d.getDay()];
+                };
+
+                let start = parseDate(dateFromInput.value);
+                let end = parseDate(dateToInput.value);
+                
+                if (!start || !end) {
+                    const dates = currentRecords.map(r => parseDate(r.time ? r.time.split(' ')[0] : ''));
+                    const validDates = dates.filter(d => d !== null);
+                    if (validDates.length > 0) {
+                        start = new Date(Math.min(...validDates));
+                        end = new Date(Math.max(...validDates));
+                    } else {
+                        start = new Date();
+                        end = new Date();
+                    }
+                }
+
+                // Generate full list of calendar days in range
+                const dateList = [];
+                let current = new Date(start);
+                while (current <= end) {
+                    const dd = String(current.getDate()).padStart(2, '0');
+                    const mm = String(current.getMonth() + 1).padStart(2, '0');
+                    const yyyy = current.getFullYear();
+                    dateList.push(`${dd}/${mm}/${yyyy}`);
+                    current.setDate(current.getDate() + 1);
+                }
+
+                // Get list of unique employees present in the filtered records
+                const uniqueEmployees = {};
+                currentRecords.forEach(r => {
+                    const pId = r.person_id || '';
+                    if (pId && !uniqueEmployees[pId]) {
+                        uniqueEmployees[pId] = {
+                            person_name: r.person_name || '',
+                            alias_id: r.alias_id || '',
+                            person_id: pId,
+                            place_name: r.place_name || ''
+                        };
+                    }
+                });
+
+                // Map of existing checkins grouped by employee_date
+                const recordMap = {};
+                currentRecords.forEach(r => {
+                    const datePart = (r.time || '').split(' ')[0] || '';
+                    const pId = r.person_id || '';
+                    const key = `${pId}_${datePart}`;
+                    if (!recordMap[key]) {
+                        recordMap[key] = [];
+                    }
+                    recordMap[key].push(r);
+                });
+
+                // Generate full matrix data
+                const groupedList = [];
+                Object.values(uniqueEmployees).forEach(emp => {
+                    dateList.forEach(dateStr => {
+                        const key = `${emp.person_id}_${dateStr}`;
+                        const dayOfWeekText = getDayOfWeekText(dateStr);
+                        const isWeekend = dayOfWeekText === "Thứ Bảy" || dayOfWeekText === "Chủ Nhật";
+
+                        if (recordMap[key]) {
+                            // Employee worked / has scans
+                            const scans = [];
+                            let holidayType = '';
+                            let correctionType = '';
+                            let approver = '';
+                            let placeName = emp.place_name || '';
+
+                            recordMap[key].forEach(record => {
+                                if (record.place_name) placeName = record.place_name;
+
+                                if (record.place_name === 'Nghỉ phép (P)') {
+                                    holidayType = 'P';
+                                    correctionType = 'Nghỉ phép';
+                                } else if (record.place_name === 'Work From Home (H)') {
+                                    holidayType = 'H';
+                                    correctionType = 'Work From Home';
+                                }
+
+                                if (record.device_name) {
+                                    if (record.device_name.startsWith('Yêu cầu: Bổ sung giờ vào')) {
+                                        if (!correctionType) correctionType = 'Bổ sung giờ vào';
+                                    } else if (record.device_name.startsWith('Yêu cầu: Bổ sung giờ ra')) {
+                                        if (!correctionType) correctionType = 'Bổ sung giờ ra';
+                                    } else if (record.device_name.startsWith('Yêu cầu: Bổ sung cả hai')) {
+                                        if (!correctionType) correctionType = 'Bổ sung cả hai';
+                                    } else if (record.device_name.startsWith('Yêu cầu: Nghỉ phép')) {
+                                        correctionType = 'Nghỉ phép';
+                                    } else if (record.device_name.startsWith('Yêu cầu: Work From Home')) {
+                                        correctionType = 'Work From Home';
+                                    }
+
+                                    if (record.device_name.includes('[CEO]')) {
+                                        approver = 'CEO';
+                                    } else if (record.device_name.includes('[Admin]')) {
+                                        approver = 'Admin';
+                                    }
+                                }
+
+                                const timePart = (record.time || '').split(' ')[1] || '';
+                                if (timePart) scans.push(timePart);
+                            });
+
+                            scans.sort();
+                            const checkInTime = scans[0] || '';
+                            const checkOutTime = scans.length > 1 ? scans[scans.length - 1] : '';
+
+                            const analysis = getAttendanceAnalysis(checkInTime, checkOutTime);
+
+                            let lateStr = "Đúng giờ";
+                            if (analysis.isLate) {
+                                lateStr = `Đi trễ (${analysis.lateMinutes} phút)`;
+                            } else if (analysis.isMissingCheckout) {
+                                lateStr = analysis.isLate ? `Đi trễ (${analysis.lateMinutes} phút)` : "Thiếu quét RA";
+                            }
+
+                            let earlyStr = "--";
+                            if (analysis.isMissingCheckout) {
+                                earlyStr = "Thiếu quét RA";
+                            } else if (analysis.isEarlyLeave) {
+                                earlyStr = `Về sớm (${analysis.earlyLeaveMinutes} phút)`;
+                            } else {
+                                earlyStr = "Đúng giờ";
+                            }
+
+                            let workHoursNum = analysis.isMissingCheckout ? 0.0 : Number(analysis.workHours);
+                            let ratingStr = analysis.isMissingCheckout ? "Thiếu quét RA" : (analysis.isInsufficient ? "Chưa đủ công" : "Đủ công");
+
+                            if (holidayType === 'P') {
+                                ratingStr = 'Nghỉ phép';
+                                lateStr = 'Nghỉ phép';
+                                earlyStr = 'Nghỉ phép';
+                                workHoursNum = 7.5;
+                            } else if (holidayType === 'H') {
+                                ratingStr = 'Work From Home';
+                                lateStr = 'Đúng giờ (WFH)';
+                                earlyStr = 'Đúng giờ (WFH)';
+                                workHoursNum = 7.5;
+                            }
+
+                            groupedList.push({
+                                alias_id: emp.alias_id || emp.person_id || '',
+                                person_name: emp.person_name,
+                                place_name: placeName || 'Văn phòng',
+                                date: dateStr,
+                                day_of_week: dayOfWeekText,
+                                check_in: checkInTime,
+                                check_out: checkOutTime || '--:--:--',
+                                late_status: lateStr,
+                                early_status: earlyStr,
+                                work_hours: workHoursNum,
+                                rating: ratingStr,
+                                holiday_type: holidayType,
+                                correction_type: correctionType,
+                                approver: approver,
+                                scan_count: scans.length,
+                                scan_details: scans.join('; ')
+                            });
+                        } else {
+                            // No scans on this day
+                            groupedList.push({
+                                alias_id: emp.alias_id || emp.person_id || '',
+                                person_name: emp.person_name,
+                                place_name: emp.place_name || 'Văn phòng',
+                                date: dateStr,
+                                day_of_week: dayOfWeekText,
+                                check_in: '',
+                                check_out: '',
+                                late_status: isWeekend ? 'Ngày nghỉ' : 'Vắng mặt',
+                                early_status: isWeekend ? 'Ngày nghỉ' : 'Vắng mặt',
+                                work_hours: 0,
+                                rating: isWeekend ? 'Ngày nghỉ' : 'Vắng mặt',
+                                holiday_type: '',
+                                correction_type: '',
+                                approver: '',
+                                scan_count: 0,
+                                scan_details: ''
+                            });
+                        }
+                    });
+                });
+
+                // Sort groupedList chronologically per employee
+                groupedList.sort((a, b) => {
+                    if (a.person_name !== b.person_name) {
+                        return a.person_name.localeCompare(b.person_name);
+                    }
+                    const dA = parseDate(a.date);
+                    const dB = parseDate(b.date);
+                    return dA - dB;
+                });
+
+                // Create Excel sheet starting with headers
+                const sheetData = [
+                    [
+                        "Mã nhân viên",
+                        "Họ tên",
+                        "Địa điểm",
+                        "Ngày",
+                        "Thứ",
+                        "Giờ vào",
+                        "Giờ ra",
+                        "Trạng thái đi trễ",
+                        "Trạng thái về sớm",
+                        "Giờ công thực tế",
+                        "Đánh giá công",
+                        "Loại ngày nghỉ",
+                        "Loại bổ sung công",
+                        "Người duyệt",
+                        "Số lần quét",
+                        "Chi tiết các lượt quét trong ngày"
+                    ]
+                ];
+
+                // Append rows to sheetData
+                groupedList.forEach(group => {
+                    sheetData.push([
+                        group.alias_id || '',
+                        group.person_name,
+                        group.place_name || 'Văn phòng',
+                        group.date,
+                        group.day_of_week,
+                        group.check_in,
+                        group.check_out || '--:--:--',
+                        group.late_status,
+                        group.early_status,
+                        group.work_hours,
+                        group.rating,
+                        group.holiday_type || '',
+                        group.correction_type || '',
+                        group.approver || '',
+                        group.scan_count,
+                        group.scan_details || ''
+                    ]);
+                });
+
+                // Generate Workbook & Sheet
+                const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "Báo cáo chấm công");
+
+                // Auto-fit Column Widths dynamically to avoid content clipping
+                const colWidths = [];
+                sheetData.forEach(row => {
+                    row.forEach((val, colIdx) => {
+                        const cellStr = val !== null && val !== undefined ? String(val) : '';
+                        const len = cellStr.length;
+                        colWidths[colIdx] = Math.max(colWidths[colIdx] || 10, len + 3);
+                    });
+                });
+                worksheet['!cols'] = colWidths.map(w => ({ wch: w }));
+
+                // Export to file
+                const fromVal = dateFromInput.value;
+                const toVal = dateToInput.value;
+                const filename = `bao_cao_cham_cong_${fromVal}_den_${toVal}.xlsx`;
+                
+                XLSX.writeFile(workbook, filename);
+            };
+
+            if (exportBtn) exportBtn.addEventListener('click', handleExport);
+
+            // --- Attendance Correction Requests JavaScript Logic ---
+
+            // Initialize Flatpickr for request date selection (From Date & To Date)
+            let startFlatpickr = null;
+            let endFlatpickr = null;
+            
+            const initRequestDatePickers = () => {
+                try {
+                    if (startFlatpickr) startFlatpickr.destroy();
+                    if (endFlatpickr) endFlatpickr.destroy();
+                    
+                    if (requestDatePicker) {
+                        startFlatpickr = flatpickr(requestDatePicker, {
+                            dateFormat: "d/m/Y",
+                            defaultDate: todayStr
+                        });
+                    }
+                    if (requestEndDatePicker) {
+                        endFlatpickr = flatpickr(requestEndDatePicker, {
+                            dateFormat: "d/m/Y",
+                            defaultDate: todayStr
+                        });
+                    }
+                } catch (err) {
+                    console.error("Flatpickr init error:", err);
+                }
+            };
+            initRequestDatePickers();
+
+            // Toggle visibility of the "End Date" field based on request type selection
+            const handleRequestTypeChange = () => {
+                if (!requestTypeSelect) return;
+                const val = requestTypeSelect.value;
+                if (val === 'leave' || val === 'wfh') {
+                    // Show End Date field
+                    if (requestEndDateContainer) requestEndDateContainer.classList.remove('hidden');
+                    if (requestDateLabel) requestDateLabel.innerText = "Từ ngày";
+                } else {
+                    // Hide End Date field
+                    if (requestEndDateContainer) requestEndDateContainer.classList.add('hidden');
+                    if (requestDateLabel) requestDateLabel.innerText = "Ngày cần bổ sung";
+                }
+            };
+            
+            if (requestTypeSelect) {
+                requestTypeSelect.addEventListener('change', handleRequestTypeChange);
+            }
+
+            // Event Delegation for request modal interactions (fully bulletproof)
+            document.addEventListener('click', (e) => {
+                // 1. Open Request Modal
+                const openTarget = e.target.closest('#request-checkin-btn');
+                if (openTarget) {
+                    try {
+                        const errorMsg = document.getElementById('request-error-msg');
+                        const reasonText = document.getElementById('request-reason');
+                        const modal = document.getElementById('request-modal');
+                        const typeSelect = document.getElementById('request-type');
+                        
+                        if (errorMsg) {
+                            errorMsg.classList.add('hidden');
+                            errorMsg.innerText = '';
+                        }
+                        if (reasonText) reasonText.value = '';
+                        if (typeSelect) {
+                            typeSelect.value = 'both';
+                        }
+                        initRequestDatePickers();
+                        handleRequestTypeChange();
+                        
+                        if (modal) {
+                            modal.classList.add('active');
+                        } else {
+                            alert("Không tìm thấy requestModal element!");
+                        }
+                    } catch (err) {
+                        alert("Lỗi khi mở modal: " + err.message);
+                    }
+                    return;
+                }
+
+                // 2. Close Request Modal via close button
+                const closeTarget = e.target.closest('#request-modal-close');
+                if (closeTarget) {
+                    try {
+                        const modal = document.getElementById('request-modal');
+                        if (modal) modal.classList.remove('active');
+                    } catch (err) {
+                        console.error(err);
+                    }
+                    return;
+                }
+
+                // 3. Close Request Modal via clicking outside dialog
+                const requestModalEl = document.getElementById('request-modal');
+                if (requestModalEl && e.target === requestModalEl) {
+                    requestModalEl.classList.remove('active');
+                    return;
+                }
+            });
+
+            // Submit Request using delegated event handler
+            document.addEventListener('click', async (e) => {
+                const submitTarget = e.target.closest('#request-submit-btn');
+                if (submitTarget) {
+                    e.preventDefault();
+                    
+                    const datePicker = document.getElementById('request-date-picker');
+                    const typeSelect = document.getElementById('request-type');
+                    const reasonText = document.getElementById('request-reason');
+                    const errorMsg = document.getElementById('request-error-msg');
+                    const modal = document.getElementById('request-modal');
+                    
+                    const reqDate = datePicker ? datePicker.value : '';
+                    const reqType = typeSelect ? typeSelect.value : '';
+                    const reqReason = reasonText ? reasonText.value.trim() : '';
+
+                    let dateToSend = reqDate;
+                    if (reqType === 'leave' || reqType === 'wfh') {
+                        const endDatePicker = document.getElementById('request-end-date-picker');
+                        const reqEndDate = endDatePicker ? endDatePicker.value : '';
+                        if (reqEndDate && reqEndDate !== reqDate) {
+                            dateToSend = `${reqDate} to ${reqEndDate}`;
+                        }
+                    }
+
+                    if (!reqDate) {
+                        if (errorMsg) {
+                            errorMsg.innerText = "Vui lòng chọn ngày cần bổ sung!";
+                            errorMsg.classList.remove('hidden');
+                        }
+                        return;
+                    }
+
+                    submitTarget.disabled = true;
+                    const originalText = submitTarget.innerText;
+                    submitTarget.innerText = "Đang gửi...";
+
+                    try {
+                        const response = await fetch('/api/requests', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                date: dateToSend,
+                                request_type: reqType,
+                                reason: reqReason
+                            })
+                        });
+                        const json = await response.json();
+
+                        if (response.ok && json.status === 'success') {
+                            alert(json.message);
+                            if (modal) modal.classList.remove('active');
+                            loadEmployeeRequests();
+                        } else {
+                            if (errorMsg) {
+                                errorMsg.innerText = json.message || "Gửi yêu cầu thất bại!";
+                                errorMsg.classList.remove('hidden');
+                            }
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        if (errorMsg) {
+                            errorMsg.innerText = "Lỗi kết nối hệ thống!";
+                            errorMsg.classList.remove('hidden');
+                        }
+                    } finally {
+                        submitTarget.disabled = false;
+                        submitTarget.innerText = originalText;
+                    }
+                }
+            });
+
+            // Load Employee Requests (My history)
+            const loadEmployeeRequests = async () => {
+                if (isUserAdmin || !isUserLoggedIn) return;
+                try {
+                    const response = await fetch('/api/requests');
+                    const json = await response.json();
+                    if (response.ok && json.status === 'success') {
+                        renderEmployeeRequests(json.data);
+                    }
+                } catch (e) {
+                    console.error("Error loading employee requests:", e);
+                }
+            };
+
+            const renderEmployeeRequests = (requests) => {
+                empRequestsTbody.innerHTML = '';
+                if (requests.length === 0) {
+                    empRequestsTbody.innerHTML = `
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.5rem 0.5rem;">
+                                Bạn chưa gửi yêu cầu bổ sung công nào.
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                requests.forEach(req => {
+                    let typeStr = 'Cả hai (Vào/Ra)';
+                    if (req.request_type === 'checkin') typeStr = 'Vào (09:00)';
+                    if (req.request_type === 'checkout') typeStr = 'Ra (18:00)';
+                    if (req.request_type === 'leave') typeStr = 'Xin nghỉ phép (P)';
+                    if (req.request_type === 'wfh') typeStr = 'Work from home (H)';
+
+                    let statusBadge = '';
+                    if (req.status === 'pending') {
+                        statusBadge = `<span style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; font-size: 0.75rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-block;">Chờ duyệt</span>`;
+                    } else if (req.status === 'approved' || req.status === 'approved_admin') {
+                        statusBadge = `<span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.75rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-block;">Admin duyệt</span>`;
+                    } else if (req.status === 'approved_ceo') {
+                        statusBadge = `<span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.75rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-block;">CEO duyệt</span>`;
+                    } else if (req.status === 'rejected_ceo') {
+                        statusBadge = `<span style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444; font-size: 0.75rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-block;">CEO bác</span>`;
+                    } else {
+                        statusBadge = `<span style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444; font-size: 0.75rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-block;">Admin bác</span>`;
+                    }
+
+                    const tr = document.createElement('tr');
+                    tr.style.borderBottom = "1px solid rgba(255, 255, 255, 0.03)";
+                    tr.innerHTML = `
+                        <td style="padding: 0.75rem 0.25rem; font-weight: 600; white-space: nowrap;">${escapeHtml(req.date.replace(' to ', ' ➔ '))}</td>
+                        <td style="padding: 0.75rem 0.25rem;">${typeStr}</td>
+                        <td style="padding: 0.75rem 0.25rem; font-size: 0.8rem; color: var(--text-secondary); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(req.reason || '')}">${escapeHtml(req.reason || '--')}</td>
+                        <td style="padding: 0.75rem 0.25rem; text-align: right;">${statusBadge}</td>
+                    `;
+                    empRequestsTbody.appendChild(tr);
+                });
+            };
+
+            // Load Admin Requests (Pending & Approved/Rejected)
+            const loadAdminRequests = async () => {
+                if (!isUserAdmin) return;
+                try {
+                    const response = await fetch('/api/requests');
+                    const json = await response.json();
+                    if (response.ok && json.status === 'success') {
+                        renderAdminRequests(json.data);
+                    }
+                } catch (e) {
+                    console.error("Error loading admin requests:", e);
+                }
+            };
+
+            const renderAdminRequests = (requests) => {
+                adminRequestsTbody.innerHTML = '';
+                if (requests.length === 0) {
+                    adminRequestsTbody.innerHTML = `
+                        <tr>
+                            <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 1.5rem 0.5rem;">
+                                Không có yêu cầu bổ sung công nào.
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                requests.forEach(req => {
+                    let typeStr = 'Cả hai';
+                    if (req.request_type === 'checkin') typeStr = 'Vào (9h)';
+                    if (req.request_type === 'checkout') typeStr = 'Ra (18h)';
+                    if (req.request_type === 'leave') typeStr = 'Nghỉ phép (P)';
+                    if (req.request_type === 'wfh') typeStr = 'Work from home (H)';
+
+                    let actionCol = '';
+                    if (req.status === 'pending') {
+                        actionCol = `
+                            <div style="display: flex; gap: 0.35rem; justify-content: flex-end;">
+                                <button class="btn-save-pin" onclick="processRequest(${req.id}, 'approve')" style="padding: 0.25rem 0.5rem; font-size: 0.7rem; background: var(--success); box-shadow: none;">Duyệt</button>
+                                <button class="btn-save-pin" onclick="processRequest(${req.id}, 'reject')" style="padding: 0.25rem 0.5rem; font-size: 0.7rem; background: #ef4444; box-shadow: none;">Bác</button>
+                            </div>
+                        `;
+                    } else if (req.status === 'approved' || req.status === 'approved_admin') {
+                        actionCol = `<span style="color: #10b981; font-weight: 600; font-size: 0.75rem;">Admin duyệt</span>`;
+                    } else if (req.status === 'approved_ceo') {
+                        actionCol = `<span style="color: #10b981; font-weight: 600; font-size: 0.75rem;">CEO duyệt</span>`;
+                    } else if (req.status === 'rejected_ceo') {
+                        actionCol = `<span style="color: #ef4444; font-weight: 600; font-size: 0.75rem;">CEO bác</span>`;
+                    } else {
+                        actionCol = `<span style="color: #ef4444; font-weight: 600; font-size: 0.75rem;">Admin bác</span>`;
+                    }
+
+                    const tr = document.createElement('tr');
+                    tr.style.borderBottom = "1px solid rgba(255, 255, 255, 0.03)";
+                    tr.innerHTML = `
+                        <td style="padding: 0.75rem 0.25rem;">
+                            <div style="font-weight: 600;">${escapeHtml(req.person_name)}</div>
+                            <div style="font-size: 0.7rem; color: var(--text-muted);">ID: ${escapeHtml(req.person_id)}</div>
+                        </td>
+                        <td style="padding: 0.75rem 0.25rem; font-weight: 600; white-space: nowrap;">${escapeHtml(req.date.replace(' to ', ' ➔ '))}</td>
+                        <td style="padding: 0.75rem 0.25rem; font-size: 0.8rem;">${typeStr}</td>
+                        <td style="padding: 0.75rem 0.25rem; font-size: 0.8rem; color: var(--text-secondary); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(req.reason || '')}">${escapeHtml(req.reason || '--')}</td>
+                        <td style="padding: 0.75rem 0.25rem; text-align: right;">${actionCol}</td>
+                    `;
+                    adminRequestsTbody.appendChild(tr);
+                });
+            };
+
+            // Global handler function for admin action clicks
+            window.processRequest = async (requestId, action) => {
+                const actionLabel = action === 'approve' ? 'duyệt' : 'từ chối';
+                if (!confirm(`Bạn có chắc chắn muốn ${actionLabel} yêu cầu này không?`)) return;
+
+                try {
+                    const response = await fetch(`/api/requests/${requestId}/action`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: action })
+                    });
+                    const json = await response.json();
+
+                    if (response.ok && json.status === 'success') {
+                        alert(json.message);
+                        loadAdminRequests();
+                        loadData(); // refresh the main attendance feed immediately
+                    } else {
+                        alert(json.message || "Xử lý yêu cầu thất bại!");
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert("Lỗi kết nối hệ thống!");
+                }
+            };
+
+            // Initial startup checks
+            checkLoginStatus().then(() => {
+                loadData();
+            });
+
+            // Auto-refresh every 10 seconds for real-time dashboard feel
+            setInterval(() => {
+                const currentTodayStr = getLocalDateString();
+                if (dateFromInput.value === currentTodayStr || dateToInput.value === currentTodayStr) {
+                    loadData(true);
+                }
+            }, 10000);
+        });
+    </script>
+</body>
+</html>
