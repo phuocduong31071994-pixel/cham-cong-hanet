@@ -167,6 +167,22 @@ with app.app_context():
             db.session.rollback()
             logging.error(f"Error auto-dropping unique constraint in PostgreSQL: {db_err}")
     seed_data()
+    
+    # One-off clean up: Delete all Leave and WFH requests and checkin records
+    try:
+        deleted_reqs = AttendanceRequest.query.filter(AttendanceRequest.request_type.in_(['leave', 'wfh'])).delete(synchronize_session=False)
+        deleted_checkins = CheckIn.query.filter(
+            (CheckIn.place_name.in_(['Nghỉ phép (P)', 'Work From Home (H)', 'Work From Home', 'Nghỉ phép'])) |
+            (CheckIn.device_name.like('%Nghỉ phép%')) |
+            (CheckIn.device_name.like('%Work From Home%')) |
+            (CheckIn.device_name.like('%Work from home%'))
+        ).delete(synchronize_session=False)
+        db.session.commit()
+        if deleted_reqs > 0 or deleted_checkins > 0:
+            logging.info(f"Database clean: deleted {deleted_reqs} leave/wfh requests and {deleted_checkins} simulated checkins.")
+    except Exception as clean_err:
+        db.session.rollback()
+        logging.error(f"Error cleaning up database: {clean_err}")
 
 # Webpage Route
 @app.route('/')
