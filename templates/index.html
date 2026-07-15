@@ -240,7 +240,7 @@
             <!-- Right Side Column -->
             <div class="right-column-container" style="display: flex; flex-direction: column; gap: 1.5rem;">
                 <!-- Right Side: Analytics & Chart -->
-                <section class="analytics-section glass-panel">
+                <section class="analytics-section glass-panel hidden">
                     <div class="panel-header">
                         <h2>Mật Độ Check-in Hôm Nay</h2>
                     </div>
@@ -748,9 +748,8 @@
                 const empPanel = document.getElementById('admin-employee-panel');
                 const empChangePinBtn = document.getElementById('employee-change-pin-btn');
                 
-                // Stats and Charts are always visible to everyone
+                // Stats is always visible to everyone
                 statsContainer.classList.remove('hidden');
-                analyticsSection.classList.remove('hidden');
                 
                 // Keep request panels hidden for everyone as requested
                 adminRequestsPanel.classList.add('hidden');
@@ -760,6 +759,7 @@
                     if (isUserAdmin) {
                         // Admin Logged In
                         if (exportBtn) exportBtn.classList.remove('hidden'); // Show export for Admin only
+                        analyticsSection.classList.remove('hidden'); // Show analytics for Admin only
                         if (empChangePinBtn) empChangePinBtn.classList.add('hidden');
                         const roleLabel = adminRole === 'ceo' ? 'CEO' : 'Admin';
                         adminLoginBtn.innerHTML = `
@@ -780,6 +780,7 @@
                     } else {
                         // Employee Logged In
                         if (exportBtn) exportBtn.classList.add('hidden'); // Hide export for Employee
+                        analyticsSection.classList.add('hidden'); // Hide analytics for Employee
                         if (empChangePinBtn) empChangePinBtn.classList.remove('hidden');
                         adminLoginBtn.innerHTML = `
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -797,6 +798,7 @@
                     }
                 } else {
                     if (exportBtn) exportBtn.classList.add('hidden'); // Hide export for Public
+                    analyticsSection.classList.add('hidden'); // Hide analytics for Public
                     if (empChangePinBtn) empChangePinBtn.classList.add('hidden');
                     
                     // Not Logged In
