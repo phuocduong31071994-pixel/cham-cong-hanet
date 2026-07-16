@@ -476,6 +476,32 @@ def sync_hanet_history_for_range(start_date_str, end_date_str):
 
     threading.Thread(target=run_sync).start()
 
+# Debug CSDL Endpoint
+@app.route('/api/debug-db')
+def debug_db():
+    try:
+        import sqlalchemy as sa
+        inspect = sa.inspect(db.engine)
+        tables = inspect.get_table_names()
+        info = {}
+        for t in tables:
+            info[t] = [c['name'] for c in inspect.get_columns(t)]
+        
+        checkins_count = db.session.query(CheckIn).count()
+        employees_count = db.session.query(Employee).count()
+        
+        return jsonify({
+            "status": "success",
+            "tables": info,
+            "checkins_count": checkins_count,
+            "employees_count": employees_count
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        })
+
 # JSON API for fetching history & stats
 @app.route('/api/checkins', methods=['GET'])
 def get_checkins():
