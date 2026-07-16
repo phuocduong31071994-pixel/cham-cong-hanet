@@ -27,3 +27,7 @@ Dự án này là hệ thống Web Tra cứu và Bổ sung công quẹt thẻ Ha
   * Nếu là thứ 7 hoặc chủ nhật không có quẹt thẻ: Ghi chú là `Ngày nghỉ`.
   * Nếu là ngày thường không quẹt thẻ: Ghi chú là `Vắng mặt`.
 * **Sắp xếp:** Sắp xếp theo tên nhân sự, sau đó tăng dần theo trình tự thời gian (chronological).
+
+## 6. Quy định đi trễ
+* **Thời gian bắt đầu đi trễ:** Sau 9h15 mới tính là đi trễ (tức là từ 09:15:01 trở đi).
+* **Công thức tính thời gian trễ:** Thời gian trễ (phút) = Giờ vào (phút) - 9h15 (555 phút).
