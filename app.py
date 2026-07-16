@@ -160,16 +160,33 @@ with app.app_context():
     db.create_all()
     # Auto-drop unique pin constraint in PostgreSQL and ensure avatar_url column exists
     if "postgresql" in app.config.get('SQLALCHEMY_DATABASE_URI', ''):
+        from sqlalchemy import text
+        # 1. Drop unique pin constraint on employees
         try:
-            from sqlalchemy import text
             db.session.execute(text("ALTER TABLE employees DROP CONSTRAINT IF EXISTS employees_pin_key CASCADE;"))
-            db.session.execute(text("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
-            db.session.execute(text("ALTER TABLE employee ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
             db.session.commit()
-            logging.info("PostgreSQL Schema Check: Dropped unique pin key and ensured checkins & employee avatar_url columns exist.")
+            logging.info("PostgreSQL Schema Check: Dropped unique pin constraint on employees.")
         except Exception as db_err:
             db.session.rollback()
-            logging.error(f"Error executing schema migrations in PostgreSQL: {db_err}")
+            logging.warning(f"Note: Could not drop constraint on employees (might not exist): {db_err}")
+
+        # 2. Ensure avatar_url exists in checkins
+        try:
+            db.session.execute(text("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
+            db.session.commit()
+            logging.info("PostgreSQL Schema Check: Ensured checkins.avatar_url column exists.")
+        except Exception as db_err:
+            db.session.rollback()
+            logging.error(f"Error ensuring checkins.avatar_url column exists: {db_err}")
+
+        # 3. Ensure avatar_url exists in employee
+        try:
+            db.session.execute(text("ALTER TABLE employee ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
+            db.session.commit()
+            logging.info("PostgreSQL Schema Check: Ensured employee.avatar_url column exists.")
+        except Exception as db_err:
+            db.session.rollback()
+            logging.error(f"Error ensuring employee.avatar_url column exists: {db_err}")
     seed_data()
     
     # One-off clean up: Delete all Leave and WFH requests and checkin records
