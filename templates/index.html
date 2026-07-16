@@ -589,7 +589,7 @@
 
                 const T_in = parseTimeToMinutes(checkInStr);
                 const isLate = T_in > 555; // After 09:15:00
-                const lateMinutes = isLate ? Math.round(T_in - 540) : 0; // Late relative to 09:00 standard
+                const lateMinutes = isLate ? Math.round(T_in - 555) : 0; // Late relative to 09:15 standard
 
                 if (!checkOutStr) {
                     return {
