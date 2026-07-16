@@ -116,13 +116,15 @@ class Employee(db.Model):
     name = db.Column(db.String(200), nullable=False)
     alias_id = db.Column(db.String(100), nullable=True)
     pin = db.Column(db.String(50), nullable=True)
+    avatar_url = db.Column(db.Text, nullable=True)
 
     def to_dict(self):
         return {
             "person_id": self.person_id,
             "name": self.name,
             "alias_id": self.alias_id,
-            "pin": self.pin
+            "pin": self.pin,
+            "avatar_url": self.avatar_url
         }
 
 class AttendanceRequest(db.Model):
@@ -162,8 +164,9 @@ with app.app_context():
             from sqlalchemy import text
             db.session.execute(text("ALTER TABLE employees DROP CONSTRAINT IF EXISTS employees_pin_key CASCADE;"))
             db.session.execute(text("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
+            db.session.execute(text("ALTER TABLE employee ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
             db.session.commit()
-            logging.info("PostgreSQL Schema Check: Dropped unique pin key and ensured avatar_url column exists.")
+            logging.info("PostgreSQL Schema Check: Dropped unique pin key and ensured checkins & employee avatar_url columns exist.")
         except Exception as db_err:
             db.session.rollback()
             logging.error(f"Error executing schema migrations in PostgreSQL: {db_err}")
@@ -311,17 +314,18 @@ def sync_employee_names():
                                 ).update({CheckIn.person_name: p_name}, synchronize_session=False)
                                 if updated_rows > 0:
                                     db_modified = True
-                                
                                 # 2. Sync to Employee table
                                 db_emp = Employee.query.filter_by(person_id=str(p_id)).first()
+                                avatar_val = emp.get("avatar")
                                 if not db_emp:
-                                    db_emp = Employee(person_id=str(p_id), name=p_name, alias_id=p_alias)
+                                    db_emp = Employee(person_id=str(p_id), name=p_name, alias_id=p_alias, avatar_url=avatar_val)
                                     db.session.add(db_emp)
                                     db_modified = True
                                 else:
-                                    if db_emp.name != p_name or db_emp.alias_id != p_alias:
+                                    if db_emp.name != p_name or db_emp.alias_id != p_alias or db_emp.avatar_url != avatar_val:
                                         db_emp.name = p_name
                                         db_emp.alias_id = p_alias
+                                        db_emp.avatar_url = avatar_val
                                         db_modified = True
                         
                         if db_modified:
@@ -424,7 +428,6 @@ def sync_hanet_history_for_range(start_date_str, end_date_str):
                                     person_name=person_name,
                                     time=vn_time
                                 ).first()
-                            
                             if not exists:
                                 alias_id = c.get("aliasID")
                                 place_name = c.get("place", "Văn phòng KimQ")
@@ -445,6 +448,11 @@ def sync_hanet_history_for_range(start_date_str, end_date_str):
                                 )
                                 db.session.add(new_rec)
                                 db_modified = True
+                            else:
+                                # Backfill avatar_url if it exists but is currently empty/None
+                                if not exists.avatar_url and c.get("avatar"):
+                                    exists.avatar_url = c.get("avatar")
+                                    db_modified = True
                         
                         if db_modified:
                             db.session.commit()
@@ -556,8 +564,8 @@ def get_checkins():
             "hour_chart": hour_counts
         }
 
-        # Backfill alias_id from synced Employee records if missing on the CheckIn record itself
-        emp_aliases = {emp.person_id: emp.alias_id for emp in Employee.query.all() if emp.alias_id}
+        # Backfill alias_id and avatar_url from synced Employee records if missing on the CheckIn record itself
+        emp_data = {emp.person_id: {"alias_id": emp.alias_id, "avatar_url": emp.avatar_url} for emp in Employee.query.all()}
         
         serialized_data = []
         for r in records:
@@ -565,8 +573,14 @@ def get_checkins():
             # Clean string values like "None" or "null"
             if d.get("alias_id") in ["None", "null", "None", None, ""]:
                 d["alias_id"] = None
-            if not d.get("alias_id") and r.person_id in emp_aliases:
-                d["alias_id"] = emp_aliases[r.person_id]
+            
+            # Backfill from Employee table if present
+            if r.person_id in emp_data:
+                if not d.get("alias_id"):
+                    d["alias_id"] = emp_data[r.person_id]["alias_id"]
+                if not d.get("avatar_url") or d.get("avatar_url").strip() == "":
+                    d["avatar_url"] = emp_data[r.person_id]["avatar_url"]
+                    
             serialized_data.append(d)
 
         return jsonify({
