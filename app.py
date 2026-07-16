@@ -496,7 +496,26 @@ def sync_hanet_history_for_range(start_date_str, end_date_str):
 # Debug CSDL Endpoint
 @app.route('/api/debug-db')
 def debug_db():
+    migration_results = {}
     try:
+        from sqlalchemy import text
+        # Try running the migration manually
+        try:
+            db.session.execute(text("ALTER TABLE employee ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
+            db.session.commit()
+            migration_results["employee_avatar_url"] = "Success"
+        except Exception as e:
+            db.session.rollback()
+            migration_results["employee_avatar_url"] = f"Failed: {str(e)}"
+
+        try:
+            db.session.execute(text("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
+            db.session.commit()
+            migration_results["checkins_avatar_url"] = "Success"
+        except Exception as e:
+            db.session.rollback()
+            migration_results["checkins_avatar_url"] = f"Failed: {str(e)}"
+
         import sqlalchemy as sa
         inspect = sa.inspect(db.engine)
         tables = inspect.get_table_names()
@@ -509,6 +528,7 @@ def debug_db():
         
         return jsonify({
             "status": "success",
+            "migration_results": migration_results,
             "tables": info,
             "checkins_count": checkins_count,
             "employees_count": employees_count
@@ -516,6 +536,7 @@ def debug_db():
     except Exception as e:
         return jsonify({
             "status": "error",
+            "migration_results": migration_results,
             "message": str(e)
         })
 
