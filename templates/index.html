@@ -495,6 +495,57 @@
         </div>
     </div>
 
+    <!-- Admin Adjustment Modal -->
+    <div class="modal-overlay" id="adjustment-modal">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h2>Điều Chỉnh Giờ Công & Nghỉ Phép</h2>
+                <button class="modal-close" id="adjustment-modal-close" aria-label="Đóng">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Nhân viên</label>
+                    <input type="text" id="adj-emp-name" readonly style="background: rgba(255,255,255,0.05); cursor: not-allowed;">
+                    <input type="hidden" id="adj-person-id">
+                </div>
+                <div class="form-group">
+                    <label>Ngày điều chỉnh</label>
+                    <input type="text" id="adj-date" readonly style="background: rgba(255,255,255,0.05); cursor: not-allowed;">
+                </div>
+                <div class="form-group">
+                    <label for="adj-type">Chế độ điều chỉnh</label>
+                    <select id="adj-type" onchange="handleAdjTypeChange()">
+                        <option value="none">-- Giữ nguyên giờ Hanet gốc / Không điều chỉnh --</option>
+                        <option value="time">Điều chỉnh giờ vào / giờ ra thủ công</option>
+                        <option value="P">Nghỉ phép (P) - Tự động 09h00 -> 18h00</option>
+                        <option value="H">Work From Home (H) - Tự động 09h00 -> 18h00</option>
+                    </select>
+                </div>
+                <div id="adj-times-group" class="hidden">
+                    <div class="form-group">
+                        <label for="adj-check-in">Giờ vào (HH:mm:ss)</label>
+                        <input type="text" id="adj-check-in" placeholder="09:00:00">
+                    </div>
+                    <div class="form-group">
+                        <label for="adj-check-out">Giờ ra (HH:mm:ss)</label>
+                        <input type="text" id="adj-check-out" placeholder="18:00:00">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="adj-note">Lý do điều chỉnh / Ghi chú (đưa vào báo cáo Request)</label>
+                    <input type="text" id="adj-note" placeholder="Ví dụ: Đi muộn do gặp khách hàng, CEO duyệt">
+                </div>
+                <div class="modal-error hidden" id="adj-error-msg"></div>
+                <button class="btn-submit" id="adj-submit-btn" onclick="saveAdjustment()">Lưu điều chỉnh</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Flatpickr JS -->
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
@@ -1395,7 +1446,8 @@
                                 scans: [],
                                 holiday_type: '',
                                 violationIndex: record.violation_index || 0,
-                                violationPenalty: record.violation_penalty || ''
+                                violationPenalty: record.violation_penalty || '',
+                                adjustment_note: record.adjustment_note || ''
                             };
                         } else {
                             // Keep the longest/most complete name (e.g. "Dương Hồng Phước" > "Phước")
@@ -1619,8 +1671,19 @@
                                         </div>
                                     </div>
                                     <div class="card-right" style="align-items: flex-end;">
-                                        <div class="date-badge" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">
-                                            Ngày: <strong>${group.date}</strong>
+                                        <div class="date-badge" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem; display: flex; align-items: center;">
+                                            <span>Ngày: <strong>${group.date}</strong></span>
+                                            ${isUserAdmin ? `
+                                                <button class="btn btn-sm btn-outline" 
+                                                        style="padding: 0.1rem 0.35rem; font-size: 0.65rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.2rem; cursor: pointer; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06); color: var(--text-color); margin-left: 0.4rem; vertical-align: middle;"
+                                                        onclick="openAdjustmentModal('${escapeHtml(group.person_id || group.alias_id || '')}', '${escapeHtml(group.person_name)}', '${escapeHtml(group.date)}', '${checkInTime}', '${checkOutTime}', '${escapeHtml(group.holiday_type || '')}', '${escapeHtml(group.adjustment_note || '')}')">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.65rem; height: 0.65rem;">
+                                                        <path d="M12 20h9"></path>
+                                                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                                                    </svg>
+                                                    Sửa công
+                                                </button>
+                                            ` : ''}
                                         </div>
                                         <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
                                             <div class="time-badge green-badge">
@@ -1810,6 +1873,7 @@ timer = setTimeout(loadData, 300);
                             const scans = [];
                             let holidayType = '';
                             let placeName = emp.place_name || '';
+                            let requestNote = '';
 
                             recordMap[key].forEach(record => {
                                 if (record.place_name) placeName = record.place_name;
@@ -1818,6 +1882,10 @@ timer = setTimeout(loadData, 300);
                                     holidayType = 'P';
                                 } else if (record.place_name === 'Work From Home (H)') {
                                     holidayType = 'H';
+                                }
+
+                                if (record.is_adjusted) {
+                                    requestNote = record.device_name || record.adjustment_note || 'Đã điều chỉnh bởi Admin';
                                 }
 
                                 const timePart = (record.time || '').split(' ')[1] || '';
@@ -1876,8 +1944,15 @@ timer = setTimeout(loadData, 300);
 
                             if (holidayType !== 'P' && holidayType !== 'H') {
                                 const hasViolation = analysis.isLate || (analysis.isEarlyLeave && !analysis.isMissingCheckout);
-                                if (hasViolation) {
-                                    const dateParts = dateStr.split('/');
+                                
+                                // Parse dateStr to check if it's on or after 2026-08-01
+                                const dateParts = dateStr.split('/');
+                                const dayNum = parseInt(dateParts[0], 10);
+                                const monthNum = parseInt(dateParts[1], 10);
+                                const yearNum = parseInt(dateParts[2], 10);
+                                const isAfterPolicy = (yearNum > 2026) || (yearNum === 2026 && monthNum > 8) || (yearNum === 2026 && monthNum === 8 && dayNum >= 1);
+
+                                if (hasViolation && isAfterPolicy) {
                                     const monthKey = `${dateParts[2]}-${dateParts[1]}`;
                                     const employeeId = emp.person_id || emp.alias_id || emp.person_name;
                                     const counterKey = `${employeeId}_${monthKey}`;
@@ -1893,9 +1968,9 @@ timer = setTimeout(loadData, 300);
                                     } else if (violationIdx === 4) {
                                         violationPen = "Cảnh báo nhắc nhở (Lần 4)";
                                     } else if (violationIdx === 5) {
-                                        violationPen = "Phạt 50k (Lần 5)";
+                                        violationPen = "Phạt 50.000đ (Lần 5)";
                                     } else {
-                                        violationPen = `Phạt 150k (Lần ${violationIdx})`;
+                                        violationPen = `Phạt 150.000đ (Lần ${violationIdx})`;
                                     }
                                 }
                             }
@@ -1914,6 +1989,7 @@ timer = setTimeout(loadData, 300);
                                 rating: ratingStr,
                                 violation_index: violationIdx > 0 ? violationIdx : '--',
                                 violation_penalty: violationPen || '--',
+                                request: requestNote || '',
                                 scan_count: scans.length,
                                 scan_details: scans.join('; ')
                             });
@@ -1933,6 +2009,7 @@ timer = setTimeout(loadData, 300);
                                 rating: isWeekend ? 'Ngày nghỉ' : 'Vắng mặt',
                                 violation_index: '--',
                                 violation_penalty: '--',
+                                request: '',
                                 scan_count: 0,
                                 scan_details: ''
                             });
@@ -1950,7 +2027,7 @@ timer = setTimeout(loadData, 300);
                     return dA - dB;
                 });
 
-                // Create Excel sheet starting with headers (removing holiday_type, correction_type, approver; adding violations)
+                // Create Excel sheet starting with headers (removing holiday_type, correction_type, approver; adding violations, Request)
                 const sheetData = [
                     [
                         "Mã nhân viên",
@@ -1966,6 +2043,7 @@ timer = setTimeout(loadData, 300);
                         "Đánh giá công",
                         "Lần vi phạm trong tháng",
                         "Hình thức xử lý vi phạm",
+                        "Request",
                         "Số lần quét",
                         "Chi tiết các lượt quét trong ngày"
                     ]
@@ -1987,6 +2065,7 @@ timer = setTimeout(loadData, 300);
                         group.rating,
                         group.violation_index,
                         group.violation_penalty,
+                        group.request || '',
                         group.scan_count,
                         group.scan_details || ''
                     ]);
@@ -2341,6 +2420,116 @@ timer = setTimeout(loadData, 300);
                 } catch (e) {
                     console.error(e);
                     alert("Lỗi kết nối hệ thống!");
+                }
+            };
+
+            // Admin Adjustment Functions
+            const adjustmentModal = document.getElementById('adjustment-modal');
+            const adjModalClose = document.getElementById('adjustment-modal-close');
+            const adjEmpNameInput = document.getElementById('adj-emp-name');
+            const adjPersonIdInput = document.getElementById('adj-person-id');
+            const adjDateInput = document.getElementById('adj-date');
+            const adjTypeSelect = document.getElementById('adj-type');
+            const adjTimesGroup = document.getElementById('adj-times-group');
+            const adjCheckInInput = document.getElementById('adj-check-in');
+            const adjCheckOutInput = document.getElementById('adj-check-out');
+            const adjNoteInput = document.getElementById('adj-note');
+            const adjErrorMsg = document.getElementById('adj-error-msg');
+
+            adjModalClose.addEventListener('click', () => {
+                adjustmentModal.classList.remove('active');
+            });
+
+            window.openAdjustmentModal = (personId, personName, dateStr, checkIn, checkOut, holidayType, note) => {
+                adjPersonIdInput.value = personId;
+                adjEmpNameInput.value = personName;
+                
+                // Parse dateStr (dd/MM/yyyy) to ISO dateStr (yyyy-MM-dd)
+                const parts = dateStr.split('/');
+                const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                adjDateInput.value = isoDate;
+
+                adjNoteInput.value = note || '';
+                adjErrorMsg.classList.add('hidden');
+
+                // Determine selected adjustment type
+                if (holidayType === 'P') {
+                    adjTypeSelect.value = 'P';
+                } else if (holidayType === 'H') {
+                    adjTypeSelect.value = 'H';
+                } else if (checkIn || checkOut) {
+                    adjTypeSelect.value = 'time';
+                } else {
+                    adjTypeSelect.value = 'none';
+                }
+
+                // Clean and set times
+                adjCheckInInput.value = (checkIn && checkIn !== '--:--:--') ? checkIn : '';
+                adjCheckOutInput.value = (checkOut && checkOut !== '--:--:--') ? checkOut : '';
+
+                handleAdjTypeChange();
+                adjustmentModal.classList.add('active');
+            };
+
+            window.handleAdjTypeChange = () => {
+                const val = adjTypeSelect.value;
+                if (val === 'time') {
+                    adjTimesGroup.classList.remove('hidden');
+                } else {
+                    adjTimesGroup.classList.add('hidden');
+                    if (val === 'P' || val === 'H') {
+                        adjCheckInInput.value = '09:00:00';
+                        adjCheckOutInput.value = '18:00:00';
+                    } else {
+                        adjCheckInInput.value = '';
+                        adjCheckOutInput.value = '';
+                    }
+                }
+            };
+
+            window.saveAdjustment = async () => {
+                adjErrorMsg.classList.add('hidden');
+                const personId = adjPersonIdInput.value;
+                const dateStr = adjDateInput.value;
+                const adjType = adjTypeSelect.value;
+                const checkInVal = adjCheckInInput.value.trim();
+                const checkOutVal = adjCheckOutInput.value.trim();
+                const noteVal = adjNoteInput.value.trim();
+
+                const submitBtn = document.getElementById('adj-submit-btn');
+                submitBtn.disabled = true;
+                const originalText = submitBtn.innerText;
+                submitBtn.innerText = "Đang lưu...";
+
+                try {
+                    const response = await fetch('/api/adjustments', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            person_id: personId,
+                            date: dateStr,
+                            adjustment_type: adjType,
+                            check_in: checkInVal,
+                            check_out: checkOutVal,
+                            note: noteVal
+                        })
+                    });
+                    const json = await response.json();
+
+                    if (response.ok && json.status === 'success') {
+                        adjustmentModal.classList.remove('active');
+                        loadData(); // reload feed
+                    } else {
+                        adjErrorMsg.innerText = json.message || "Không thể lưu điều chỉnh!";
+                        adjErrorMsg.classList.remove('hidden');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    adjErrorMsg.innerText = "Lỗi kết nối hệ thống!";
+                    adjErrorMsg.classList.remove('hidden');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = originalText;
                 }
             };
 

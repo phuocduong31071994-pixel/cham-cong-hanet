@@ -107,7 +107,9 @@ class CheckIn(db.Model):
             "place_name": self.place_name,
             "device_id": self.device_id,
             "device_name": self.device_name,
-            "avatar_url": self.avatar_url
+            "avatar_url": self.avatar_url,
+            "is_adjusted": getattr(self, 'is_adjusted', False),
+            "adjustment_note": getattr(self, 'adjustment_note', None)
         }
 
 class Employee(db.Model):
@@ -148,6 +150,27 @@ class AttendanceRequest(db.Model):
             "reason": self.reason,
             "status": self.status,
             "created_at": self.created_at.strftime('%d/%m/%Y %H:%M:%S')
+        }
+
+class AttendanceAdjustment(db.Model):
+    __tablename__ = 'attendance_adjustments'
+    id = db.Column(db.Integer, primary_key=True)
+    person_id = db.Column(db.String(100), nullable=False)
+    date = db.Column(db.String(10), nullable=False) # Format 'YYYY-MM-DD'
+    check_in = db.Column(db.String(8), nullable=True) # Format 'HH:mm:ss'
+    check_out = db.Column(db.String(8), nullable=True) # Format 'HH:mm:ss'
+    adjustment_type = db.Column(db.String(10), nullable=True) # 'P', 'H', 'time'
+    note = db.Column(db.String(255), nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "person_id": self.person_id,
+            "date": self.date,
+            "check_in": self.check_in,
+            "check_out": self.check_out,
+            "adjustment_type": self.adjustment_type,
+            "note": self.note
         }
 
 # Seed dummy data if empty
@@ -558,8 +581,74 @@ def get_checkins():
         end_dt_end = datetime.combine(end_dt.date(), datetime.max.time())
         query = query.filter(CheckIn.time >= start_dt, CheckIn.time <= end_dt_end)
 
-        # Get latest records first
-        records = query.order_by(CheckIn.time.desc()).all()
+        # Get raw records first
+        raw_records = query.order_by(CheckIn.time.desc()).all()
+
+        # Fetch adjustments in this range
+        adjustments = AttendanceAdjustment.query.filter(
+            AttendanceAdjustment.date >= start_date,
+            AttendanceAdjustment.date <= end_date
+        ).all()
+
+        if search_query:
+            # Match employee person_ids
+            matching_emp_ids = [e.person_id for e in Employee.query.filter(
+                (Employee.name.ilike(f"%{search_query}%")) |
+                (Employee.alias_id.ilike(f"%{search_query}%"))
+            ).all()]
+            adjustments = [adj for adj in adjustments if adj.person_id in matching_emp_ids]
+
+        adj_map = {(adj.person_id, adj.date): adj for adj in adjustments}
+
+        # Filter out raw records that are overridden by admin adjustments
+        filtered_records = []
+        for r in raw_records:
+            date_str = r.time.strftime('%Y-%m-%d')
+            if (r.person_id, date_str) not in adj_map:
+                filtered_records.append(r)
+
+        # Append simulated scans for each adjustment
+        for adj in adjustments:
+            emp = Employee.query.filter_by(person_id=adj.person_id).first()
+            emp_name = emp.name if emp else "Nhân viên"
+            emp_alias = emp.alias_id if emp else ""
+            emp_avatar = emp.avatar_url if emp else ""
+
+            # Check-in scan
+            check_in_time_str = adj.check_in or "09:00:00"
+            c_in = CheckIn(
+                id=-1,
+                person_id=adj.person_id,
+                person_name=emp_name,
+                alias_id=emp_alias,
+                time=datetime.strptime(f"{adj.date} {check_in_time_str}", '%Y-%m-%d %H:%M:%S'),
+                place_name="Nghỉ phép (P)" if adj.adjustment_type == 'P' else ("Work From Home (H)" if adj.adjustment_type == 'H' else "Văn phòng"),
+                device_name=f"Admin điều chỉnh: {adj.note or ''}",
+                avatar_url=emp_avatar
+            )
+            c_in.is_adjusted = True
+            c_in.adjustment_note = adj.note
+            filtered_records.append(c_in)
+
+            # Check-out scan (only if check_out is provided, or if P/H)
+            if adj.check_out or adj.adjustment_type in ['P', 'H']:
+                check_out_time_str = adj.check_out or "18:00:00"
+                c_out = CheckIn(
+                    id=-2,
+                    person_id=adj.person_id,
+                    person_name=emp_name,
+                    alias_id=emp_alias,
+                    time=datetime.strptime(f"{adj.date} {check_out_time_str}", '%Y-%m-%d %H:%M:%S'),
+                    place_name="Nghỉ phép (P)" if adj.adjustment_type == 'P' else ("Work From Home (H)" if adj.adjustment_type == 'H' else "Văn phòng"),
+                    device_name=f"Admin điều chỉnh: {adj.note or ''}",
+                    avatar_url=emp_avatar
+                )
+                c_out.is_adjusted = True
+                c_out.adjustment_note = adj.note
+                filtered_records.append(c_out)
+
+        # Re-sort combined records descending by time
+        records = sorted(filtered_records, key=lambda r: r.time, reverse=True)
 
         # Calculate Statistics for the selected date range/search records
         total_today = len(records)
@@ -639,7 +728,8 @@ def get_checkins():
                         t_out_mins = check_out_time.hour * 60 + check_out_time.minute + check_out_time.second / 60.0
                         is_early_leave = t_out_mins < 1080 # before 18:00 PM
                         
-                    has_violation = is_late or is_early_leave
+                    is_after_policy_start = (check_in_time.date() >= date(2026, 8, 1))
+                    has_violation = is_after_policy_start and (is_late or is_early_leave)
                     if has_violation:
                         running_violations += 1
                         penalty_str = ""
@@ -687,6 +777,76 @@ def get_checkins():
     except Exception as e:
         logging.error(f"Error fetching check-ins api: {str(e)}")
         return jsonify({"status": "error", "message": "Failed to fetch records"}), 500
+
+@app.route('/api/adjustments', methods=['GET'])
+def get_adjustments():
+    try:
+        is_admin = session.get('is_admin', False)
+        if not is_admin:
+            return jsonify({"status": "error", "message": "Unauthorized"}), 403
+            
+        adjustments = AttendanceAdjustment.query.all()
+        return jsonify({
+            "status": "success",
+            "data": [adj.to_dict() for adj in adjustments]
+        })
+    except Exception as e:
+        logging.error(f"Error fetching adjustments: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/api/adjustments', methods=['POST'])
+def save_adjustment():
+    try:
+        is_admin = session.get('is_admin', False)
+        if not is_admin:
+            return jsonify({"status": "error", "message": "Unauthorized"}), 403
+            
+        data = request.json or {}
+        person_id = data.get('person_id', '').strip()
+        date_str = data.get('date', '').strip() # 'YYYY-MM-DD'
+        adjustment_type = data.get('adjustment_type', 'none').strip() # 'P', 'H', 'time', 'none'
+        check_in = data.get('check_in', '').strip() or None # 'HH:mm:ss'
+        check_out = data.get('check_out', '').strip() or None # 'HH:mm:ss'
+        note = data.get('note', '').strip() or None
+        
+        if not person_id or not date_str:
+            return jsonify({"status": "error", "message": "Missing person_id or date"}), 400
+            
+        # Check if adjustment exists
+        adj = AttendanceAdjustment.query.filter_by(person_id=person_id, date=date_str).first()
+        
+        if adjustment_type == 'none':
+            if adj:
+                db.session.delete(adj)
+                db.session.commit()
+            return jsonify({"status": "success", "message": "Adjustment removed"})
+            
+        if adjustment_type in ['P', 'H']:
+            check_in = '09:00:00'
+            check_out = '18:00:00'
+            
+        if not adj:
+            adj = AttendanceAdjustment(
+                person_id=person_id,
+                date=date_str,
+                check_in=check_in,
+                check_out=check_out,
+                adjustment_type=adjustment_type,
+                note=note
+            )
+            db.session.add(adj)
+        else:
+            adj.check_in = check_in
+            adj.check_out = check_out
+            adj.adjustment_type = adjustment_type
+            adj.note = note
+            
+        db.session.commit()
+        return jsonify({"status": "success", "data": adj.to_dict()})
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"Error saving adjustment: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # Unified Login Endpoint (Admin and Employee)
 @app.route('/api/login', methods=['POST'])
