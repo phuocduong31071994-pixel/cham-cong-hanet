@@ -2,7 +2,7 @@
 :root[data-theme="dark"] {
     --bg-main: #0b0f19;
     --bg-accent-1: #1e1b4b;
-    --bg-accent-2: #311042;
+    --bg-accent-2: #16283b;
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --text-muted: #64748b;
@@ -11,8 +11,8 @@
     --glass-highlight: rgba(255, 255, 255, 0.03);
     --panel-shadow: rgba(0, 0, 0, 0.4);
     
-    --accent: #6366f1;
-    --accent-gradient: linear-gradient(135deg, #6366f1, #a855f7);
+    --accent: #b05cf6;
+    --accent-gradient: linear-gradient(135deg, #b05cf6 0%, #6366f1 50%, #00f5d4 100%);
     
     --success: #10b981;
     --success-bg: rgba(16, 185, 129, 0.1);
@@ -24,7 +24,7 @@
 :root[data-theme="light"] {
     --bg-main: #f8fafc;
     --bg-accent-1: #e0e7ff;
-    --bg-accent-2: #f3e8ff;
+    --bg-accent-2: #e0f7f4;
     --text-primary: #0f172a;
     --text-secondary: #475569;
     --text-muted: #94a3b8;
@@ -33,8 +33,8 @@
     --glass-highlight: rgba(255, 255, 255, 0.5);
     --panel-shadow: rgba(99, 102, 241, 0.05);
     
-    --accent: #4f46e5;
-    --accent-gradient: linear-gradient(135deg, #4f46e5, #9333ea);
+    --accent: #9333ea;
+    --accent-gradient: linear-gradient(135deg, #9333ea 0%, #4f46e5 50%, #00c49f 100%);
     
     --success: #059669;
     --success-bg: rgba(5, 150, 105, 0.1);
@@ -145,21 +145,21 @@ body {
 }
 
 #main-title {
-    font-family: 'Outfit', sans-serif;
+    font-family: 'Lexend', sans-serif;
     font-size: 1.8rem;
-    font-weight: 900;
-    letter-spacing: -0.035em;
+    font-weight: 800;
+    letter-spacing: -0.015em;
     text-transform: uppercase;
-    background: linear-gradient(135deg, #34d399, #10b981, #059669);
+    background: var(--accent-gradient);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-    filter: drop-shadow(0 2px 8px rgba(16, 185, 129, 0.15));
+    filter: drop-shadow(0 2px 10px rgba(176, 92, 246, 0.25));
     transition: all 0.3s ease;
 }
 
 #main-title:hover {
-    filter: drop-shadow(0 4px 12px rgba(52, 211, 153, 0.35));
+    filter: drop-shadow(0 4px 14px rgba(176, 92, 246, 0.45));
     transform: translateY(-1px);
 }
 
