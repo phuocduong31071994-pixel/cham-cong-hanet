@@ -1759,6 +1759,8 @@ timer = setTimeout(loadData, 300);
 
                 // Generate full matrix data
                 const groupedList = [];
+                const violationCounters = {}; // Keep running count of violations per employee per month
+
                 Object.values(uniqueEmployees).forEach(emp => {
                     dateList.forEach(dateStr => {
                         const key = `${emp.person_id}_${dateStr}`;
@@ -1769,8 +1771,6 @@ timer = setTimeout(loadData, 300);
                             // Employee worked / has scans
                             const scans = [];
                             let holidayType = '';
-                            let correctionType = '';
-                            let approver = '';
                             let placeName = emp.place_name || '';
 
                             recordMap[key].forEach(record => {
@@ -1778,30 +1778,8 @@ timer = setTimeout(loadData, 300);
 
                                 if (record.place_name === 'Nghỉ phép (P)') {
                                     holidayType = 'P';
-                                    correctionType = 'Nghỉ phép';
                                 } else if (record.place_name === 'Work From Home (H)') {
                                     holidayType = 'H';
-                                    correctionType = 'Work From Home';
-                                }
-
-                                if (record.device_name) {
-                                    if (record.device_name.startsWith('Yêu cầu: Bổ sung giờ vào')) {
-                                        if (!correctionType) correctionType = 'Bổ sung giờ vào';
-                                    } else if (record.device_name.startsWith('Yêu cầu: Bổ sung giờ ra')) {
-                                        if (!correctionType) correctionType = 'Bổ sung giờ ra';
-                                    } else if (record.device_name.startsWith('Yêu cầu: Bổ sung cả hai')) {
-                                        if (!correctionType) correctionType = 'Bổ sung cả hai';
-                                    } else if (record.device_name.startsWith('Yêu cầu: Nghỉ phép')) {
-                                        correctionType = 'Nghỉ phép';
-                                    } else if (record.device_name.startsWith('Yêu cầu: Work From Home')) {
-                                        correctionType = 'Work From Home';
-                                    }
-
-                                    if (record.device_name.includes('[CEO]')) {
-                                        approver = 'CEO';
-                                    } else if (record.device_name.includes('[Admin]')) {
-                                        approver = 'Admin';
-                                    }
                                 }
 
                                 const timePart = (record.time || '').split(' ')[1] || '';
@@ -1854,6 +1832,36 @@ timer = setTimeout(loadData, 300);
                                 workHoursNum = 7.5;
                             }
 
+                            // Calculate violation index and penalty for this day
+                            let violationIdx = 0;
+                            let violationPen = "";
+
+                            if (holidayType !== 'P' && holidayType !== 'H') {
+                                const hasViolation = analysis.isLate || (analysis.isEarlyLeave && !analysis.isMissingCheckout);
+                                if (hasViolation) {
+                                    const dateParts = dateStr.split('/');
+                                    const monthKey = `${dateParts[2]}-${dateParts[1]}`;
+                                    const employeeId = emp.person_id || emp.alias_id || emp.person_name;
+                                    const counterKey = `${employeeId}_${monthKey}`;
+
+                                    if (!violationCounters[counterKey]) {
+                                        violationCounters[counterKey] = 0;
+                                    }
+                                    violationCounters[counterKey] += 1;
+                                    violationIdx = violationCounters[counterKey];
+
+                                    if (violationIdx <= 3) {
+                                        violationPen = `Vi phạm lần ${violationIdx}`;
+                                    } else if (violationIdx === 4) {
+                                        violationPen = "Cảnh báo nhắc nhở (Lần 4)";
+                                    } else if (violationIdx === 5) {
+                                        violationPen = "Phạt 50k (Lần 5)";
+                                    } else {
+                                        violationPen = `Phạt 150k (Lần ${violationIdx})`;
+                                    }
+                                }
+                            }
+
                             groupedList.push({
                                 alias_id: emp.alias_id || emp.person_id || '',
                                 person_name: emp.person_name,
@@ -1866,9 +1874,8 @@ timer = setTimeout(loadData, 300);
                                 early_status: earlyStr,
                                 work_hours: workHoursNum,
                                 rating: ratingStr,
-                                holiday_type: holidayType,
-                                correction_type: correctionType,
-                                approver: approver,
+                                violation_index: violationIdx > 0 ? violationIdx : '--',
+                                violation_penalty: violationPen || '--',
                                 scan_count: scans.length,
                                 scan_details: scans.join('; ')
                             });
@@ -1886,9 +1893,8 @@ timer = setTimeout(loadData, 300);
                                 early_status: isWeekend ? 'Ngày nghỉ' : 'Vắng mặt',
                                 work_hours: 0,
                                 rating: isWeekend ? 'Ngày nghỉ' : 'Vắng mặt',
-                                holiday_type: '',
-                                correction_type: '',
-                                approver: '',
+                                violation_index: '--',
+                                violation_penalty: '--',
                                 scan_count: 0,
                                 scan_details: ''
                             });
@@ -1906,7 +1912,7 @@ timer = setTimeout(loadData, 300);
                     return dA - dB;
                 });
 
-                // Create Excel sheet starting with headers
+                // Create Excel sheet starting with headers (removing holiday_type, correction_type, approver; adding violations)
                 const sheetData = [
                     [
                         "Mã nhân viên",
@@ -1920,9 +1926,8 @@ timer = setTimeout(loadData, 300);
                         "Trạng thái về sớm",
                         "Giờ công thực tế",
                         "Đánh giá công",
-                        "Loại ngày nghỉ",
-                        "Loại bổ sung công",
-                        "Người duyệt",
+                        "Lần vi phạm trong tháng",
+                        "Hình thức xử lý vi phạm",
                         "Số lần quét",
                         "Chi tiết các lượt quét trong ngày"
                     ]
@@ -1942,9 +1947,8 @@ timer = setTimeout(loadData, 300);
                         group.early_status,
                         group.work_hours,
                         group.rating,
-                        group.holiday_type || '',
-                        group.correction_type || '',
-                        group.approver || '',
+                        group.violation_index,
+                        group.violation_penalty,
                         group.scan_count,
                         group.scan_details || ''
                     ]);
