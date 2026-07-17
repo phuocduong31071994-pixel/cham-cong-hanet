@@ -28,6 +28,11 @@ Dự án này là hệ thống Web Tra cứu và Bổ sung công quẹt thẻ Ha
   * Nếu là ngày thường không quẹt thẻ: Ghi chú là `Vắng mặt`.
 * **Sắp xếp:** Sắp xếp theo tên nhân sự, sau đó tăng dần theo trình tự thời gian (chronological).
 
-## 6. Quy định đi trễ
+## 6. Quy định đi trễ & Cảnh báo phê duyệt Lark
 * **Thời gian bắt đầu đi trễ:** Sau 9h15 mới tính là đi trễ (tức là từ 09:15:01 trở đi).
 * **Công thức tính thời gian trễ:** Thời gian trễ (phút) = Giờ vào (phút) - 9h15 (555 phút).
+* **Điều kiện Cảnh báo phê duyệt Lark (Quá 30 phút):**
+  * Nếu giờ quét vào muộn hơn **9h30** (sau 9:30 AM).
+  * Hoặc nếu giờ quét ra sớm hơn **17h30** (trước 5:30 PM).
+  * ➔ Hệ thống sẽ hiển thị nhãn cảnh báo nổi bật màu đỏ: **"Trễ so với quy định, phải xin phê duyệt qua Lark"**.
+  * ➔ Trong file báo cáo Excel xuất ra, ô trạng thái đi trễ hoặc về sớm tương ứng cũng sẽ được tự động đính kèm thêm dòng ghi chú `(Cần duyệt qua Lark)` để HR dễ dàng đối chiếu.
