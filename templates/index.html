@@ -1419,16 +1419,66 @@
                         }
                     });
 
-                    // Convert grouped object to array and sort by date desc
-                    const groupedList = Object.values(grouped).sort((a, b) => {
-                        const parseDate = (dStr) => {
-                            if (!dStr) return new Date(0);
-                            const parts = dStr.split('/');
-                            if (parts.length < 3) return new Date(0);
-                            return new Date(parts[2], parts[1] - 1, parts[0]);
-                        };
-                        return parseDate(b.date) - parseDate(a.date);
+                    // Sort check-in groups chronologically (oldest to newest) to count running violations per employee per month
+                    const parseDateHelper = (dStr) => {
+                        if (!dStr) return new Date(0);
+                        const parts = dStr.split('/');
+                        if (parts.length < 3) return new Date(0);
+                        return new Date(parts[2], parts[1] - 1, parts[0]);
+                    };
+
+                    const chronologicalGroups = Object.values(grouped).sort((a, b) => parseDateHelper(a.date) - parseDateHelper(b.date));
+                    const violationCounters = {};
+
+                    chronologicalGroups.forEach(group => {
+                        if (group.holiday_type === 'P' || group.holiday_type === 'H') {
+                            group.violationIndex = 0;
+                            group.violationPenalty = '';
+                            return;
+                        }
+
+                        const dateParts = group.date.split('/');
+                        if (dateParts.length < 3) {
+                            group.violationIndex = 0;
+                            group.violationPenalty = '';
+                            return;
+                        }
+                        const monthKey = `${dateParts[2]}-${dateParts[1]}`;
+                        const employeeId = group.person_id || group.alias_id || group.person_name;
+                        const counterKey = `${employeeId}_${monthKey}`;
+
+                        const checkInTime = group.scans[0] || '';
+                        const checkOutTime = group.scans.length > 1 ? group.scans[group.scans.length - 1] : '';
+                        const analysis = getAttendanceAnalysis(checkInTime, checkOutTime);
+
+                        // Violation: isLate (after 9:15) or isEarlyLeave (before 18:00, not including missing checkouts)
+                        const hasViolation = analysis.isLate || (analysis.isEarlyLeave && !analysis.isMissingCheckout);
+
+                        if (hasViolation) {
+                            if (!violationCounters[counterKey]) {
+                                violationCounters[counterKey] = 0;
+                            }
+                            violationCounters[counterKey] += 1;
+                            const currentViolations = violationCounters[counterKey];
+                            group.violationIndex = currentViolations;
+
+                            if (currentViolations <= 3) {
+                                group.violationPenalty = `Vi phạm lần ${currentViolations}`;
+                            } else if (currentViolations === 4) {
+                                group.violationPenalty = `Cảnh báo nhắc nhở (Lần 4)`;
+                            } else if (currentViolations === 5) {
+                                group.violationPenalty = `Phạt 50k (Lần 5)`;
+                            } else {
+                                group.violationPenalty = `Phạt 150k (Lần ${currentViolations})`;
+                            }
+                        } else {
+                            group.violationIndex = 0;
+                            group.violationPenalty = '';
+                        }
                     });
+
+                    // Convert grouped object to array and sort by date desc for display
+                    const groupedList = Object.values(grouped).sort((a, b) => parseDateHelper(b.date) - parseDateHelper(a.date));
 
                     let newHTML = '';
                     groupedList.forEach(group => {
@@ -1552,6 +1602,28 @@
                                         <line x1="12" y1="17" x2="12.01" y2="17"></line>
                                     </svg>
                                     Sớm so với quy định, xin phê duyệt qua Lark
+                                </span>
+                            `;
+                        }
+
+                        if (group.violationPenalty) {
+                            let badgeStyle = '';
+                            let svgIcon = '';
+                            if (group.violationIndex <= 3) {
+                                badgeStyle = `background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); color: #f59e0b;`;
+                                svgIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
+                            } else if (group.violationIndex === 4) {
+                                badgeStyle = `background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.35); color: #d97706; font-weight: 700;`;
+                                svgIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>`;
+                            } else {
+                                badgeStyle = `background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #ef4444; font-weight: 700;`;
+                                svgIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"></polygon><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
+                            }
+
+                            badgesHtml += `
+                                <span style="${badgeStyle} font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    ${svgIcon}
+                                    ${escapeHtml(group.violationPenalty)}
                                 </span>
                             `;
                         }
