@@ -316,69 +316,83 @@ def hanet_webhook():
 LAST_EMPLOYEE_SYNC = 0
 LAST_RANGE_SYNC = {}
 
-def sync_employee_names():
+def sync_employee_names_sync(force=False):
     """
-    Fetches the current employee list from Hanet and updates their names
-    in our database if they have been renamed. Runs in a background thread.
+    Fetches the current employee list from Hanet, updates names/aliases/avatars,
+    and removes local employees who have been deleted on Hanet.
     """
     global LAST_EMPLOYEE_SYNC
     now = time.time()
-    if now - LAST_EMPLOYEE_SYNC < 300: # 5 minutes cooldown
-        return
+    if not force and (now - LAST_EMPLOYEE_SYNC < 300): # 5 minutes cooldown
+        return False, "Cooldown in effect"
     LAST_EMPLOYEE_SYNC = now
 
-    def run_sync():
-        with app.app_context():
-            try:
-                url = "https://partner.hanet.ai/person/getListByPlace"
-                payload = {
-                    "token": HANET_TOKEN,
-                    "placeID": HANET_PLACE_ID,
-                    "size": 200
-                }
-                res = requests.post(url, data=payload, timeout=10)
-                if res.status_code == 200:
-                    res_json = res.json()
-                    if res_json.get("returnCode") == 1:
-                        employees = res_json.get("data", [])
-                        db_modified = False
-                        for emp in employees:
-                            p_id = emp.get("personID")
-                            p_name = emp.get("name", "").strip()
-                            p_alias = emp.get("aliasID", "").strip() if emp.get("aliasID") else None
-                            if p_id and p_name:
-                                # 1. Update all check-in records for this person if their name changed
-                                updated_rows = db.session.query(CheckIn).filter(
-                                    CheckIn.person_id == str(p_id),
-                                    CheckIn.person_name != p_name
-                                ).update({CheckIn.person_name: p_name}, synchronize_session=False)
-                                if updated_rows > 0:
-                                    db_modified = True
-                                # 2. Sync to Employee table
-                                db_emp = Employee.query.filter_by(person_id=str(p_id)).first()
-                                avatar_val = emp.get("avatar")
-                                if not db_emp:
-                                    db_emp = Employee(person_id=str(p_id), name=p_name, alias_id=p_alias, avatar_url=avatar_val)
-                                    db.session.add(db_emp)
-                                    db_modified = True
-                                else:
-                                    if db_emp.name != p_name or db_emp.alias_id != p_alias or db_emp.avatar_url != avatar_val:
-                                        db_emp.name = p_name
-                                        db_emp.alias_id = p_alias
-                                        db_emp.avatar_url = avatar_val
-                                        db_modified = True
-                        
-                        if db_modified:
-                            db.session.commit()
-                            logging.info("Successfully synchronized renamed employees from Hanet place list in background.")
-                    else:
-                        logging.error(f"Hanet getListByPlace Error: {res_json.get('returnMessage')}")
-                else:
-                    logging.error(f"Failed to fetch user list from Hanet. Status: {res.status_code}")
-            except Exception as e:
-                logging.error(f"Error in sync_employee_names background thread: {str(e)}")
+    try:
+        url = "https://partner.hanet.ai/person/getListByPlace"
+        payload = {
+            "token": HANET_TOKEN,
+            "placeID": HANET_PLACE_ID,
+            "size": 200
+        }
+        res = requests.post(url, data=payload, timeout=10)
+        if res.status_code == 200:
+            res_json = res.json()
+            if res_json.get("returnCode") == 1:
+                employees = res_json.get("data", [])
+                db_modified = False
+                active_person_ids = set()
 
-    threading.Thread(target=run_sync).start()
+                for emp in employees:
+                    p_id = emp.get("personID")
+                    p_name = emp.get("name", "").strip()
+                    p_alias = emp.get("aliasID", "").strip() if emp.get("aliasID") else None
+                    if p_id and p_name:
+                        active_person_ids.add(str(p_id))
+
+                        # 1. Update all check-in records for this person if their name changed
+                        updated_rows = db.session.query(CheckIn).filter(
+                            CheckIn.person_id == str(p_id),
+                            CheckIn.person_name != p_name
+                        ).update({CheckIn.person_name: p_name}, synchronize_session=False)
+                        if updated_rows > 0:
+                            db_modified = True
+
+                        # 2. Sync to Employee table
+                        db_emp = Employee.query.filter_by(person_id=str(p_id)).first()
+                        avatar_val = emp.get("avatar")
+                        if not db_emp:
+                            db_emp = Employee(person_id=str(p_id), name=p_name, alias_id=p_alias, avatar_url=avatar_val)
+                            db.session.add(db_emp)
+                            db_modified = True
+                        else:
+                            if db_emp.name != p_name or db_emp.alias_id != p_alias or db_emp.avatar_url != avatar_val:
+                                db_emp.name = p_name
+                                db_emp.alias_id = p_alias
+                                db_emp.avatar_url = avatar_val
+                                db_modified = True
+
+                # 3. Clean up deleted employees
+                local_employees = Employee.query.all()
+                for db_emp in local_employees:
+                    if db_emp.person_id not in active_person_ids:
+                        db.session.delete(db_emp)
+                        db_modified = True
+
+                if db_modified:
+                    db.session.commit()
+                    logging.info("Successfully synchronized employee list from Hanet place list.")
+                    return True, "Đồng bộ thành công!"
+                return True, "Đã đồng bộ, không có thay đổi."
+            else:
+                return False, f"Hanet error: {res_json.get('returnMessage')}"
+        else:
+            return False, f"HTTP status error: {res.status_code}"
+    except Exception as e:
+        logging.error(f"Error in sync_employee_names_sync: {str(e)}")
+        return False, str(e)
+
+def sync_employee_names():
+    threading.Thread(target=lambda: sync_employee_names_sync(force=False)).start()
 
 def sync_hanet_history_for_range(start_date_str, end_date_str):
     """
@@ -1270,6 +1284,16 @@ def admin_reset_employee_pin():
         
     return jsonify({"status": "error", "message": "Không tìm thấy nhân sự"}), 404
 
+# Admin Force Sync Employees Endpoint
+@app.route('/api/admin/employees/sync', methods=['POST'])
+def admin_sync_employees():
+    if not session.get('is_admin', False):
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+        
+    success, msg = sync_employee_names_sync(force=True)
+    if success:
+        return jsonify({"status": "success", "message": msg}), 200
+    return jsonify({"status": "error", "message": msg}), 500
 
 # Employee Change PIN Endpoint
 @app.route('/api/employee/change-pin', methods=['POST'])
