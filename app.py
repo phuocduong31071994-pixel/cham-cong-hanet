@@ -572,8 +572,9 @@ def get_checkins():
         # Perform automatic sync for this range
         sync_hanet_history_for_range(start_date, end_date)
 
-        # Anyone can view all check-ins (public access)
-        query = CheckIn.query
+        # Anyone can view active check-ins (public access) - filtered to active employees only
+        active_emp_ids = [e.person_id for e in Employee.query.all()]
+        query = CheckIn.query.filter(CheckIn.person_id.in_(active_emp_ids))
         valid_pin = False
 
         # Filter by search query if provided
