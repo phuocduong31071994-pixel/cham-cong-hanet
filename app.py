@@ -584,19 +584,95 @@ def get_checkins():
         # Backfill alias_id and avatar_url from synced Employee records if missing on the CheckIn record itself
         emp_data = {emp.person_id: {"alias_id": emp.alias_id, "avatar_url": emp.avatar_url} for emp in Employee.query.all()}
         
+        # Calculate monthly running violations dynamically in Python to ensure accurate counters regardless of the searched date range
+        import calendar
+        spanned_months = set()
+        # start_dt and end_dt are parsed from date args
+        curr_dt = datetime(start_dt.year, start_dt.month, 1)
+        while curr_dt <= end_dt:
+            spanned_months.add((curr_dt.year, curr_dt.month))
+            if curr_dt.month == 12:
+                curr_dt = datetime(curr_dt.year + 1, 1, 1)
+            else:
+                curr_dt = datetime(curr_dt.year, curr_dt.month + 1, 1)
+
+        violation_map = {} # key: (emp_key, date_str) -> (violation_index, penalty_str)
+        for year, month in spanned_months:
+            last_day = calendar.monthrange(year, month)[1]
+            month_start = datetime(year, month, 1, 0, 0, 0)
+            month_end = datetime(year, month, last_day, 23, 59, 59)
+            
+            month_checkins = CheckIn.query.filter(CheckIn.time >= month_start, CheckIn.time <= month_end).all()
+            
+            grouped_scans = {}
+            for c in month_checkins:
+                emp_key = c.person_id or c.alias_id or c.person_name or 'unknown'
+                date_str = c.time.strftime('%Y-%m-%d')
+                g_key = (emp_key, date_str)
+                if g_key not in grouped_scans:
+                    grouped_scans[g_key] = []
+                grouped_scans[g_key].append(c)
+                
+            emp_keys = set(g_key[0] for g_key in grouped_scans.keys())
+            for emp in emp_keys:
+                emp_dates = [g_key[1] for g_key in grouped_scans.keys() if g_key[0] == emp]
+                emp_dates.sort() # Sorted oldest to newest chronologically
+                
+                running_violations = 0
+                for date_str in emp_dates:
+                    day_scans = grouped_scans[(emp, date_str)]
+                    
+                    is_holiday = any(s.place_name in ['Nghỉ phép (P)', 'Work From Home (H)'] for s in day_scans)
+                    if is_holiday:
+                        violation_map[(emp, date_str)] = (0, '')
+                        continue
+                        
+                    day_scans.sort(key=lambda s: s.time)
+                    check_in_time = day_scans[0].time
+                    check_out_time = day_scans[-1].time if len(day_scans) > 1 else None
+                    
+                    t_in_mins = check_in_time.hour * 60 + check_in_time.minute + check_in_time.second / 60.0
+                    is_late = t_in_mins > 555 # after 9:15 AM
+                    
+                    is_early_leave = False
+                    if check_out_time is not None:
+                        t_out_mins = check_out_time.hour * 60 + check_out_time.minute + check_out_time.second / 60.0
+                        is_early_leave = t_out_mins < 1080 # before 18:00 PM
+                        
+                    has_violation = is_late or is_early_leave
+                    if has_violation:
+                        running_violations += 1
+                        penalty_str = ""
+                        if running_violations <= 3:
+                            penalty_str = f"Vi phạm lần {running_violations}"
+                        elif running_violations == 4:
+                            penalty_str = "Cảnh báo nhắc nhở (Lần 4)"
+                        elif running_violations == 5:
+                            penalty_str = "Phạt 50k (Lần 5)"
+                        else:
+                            penalty_str = f"Phạt 150k (Lần {running_violations})"
+                        violation_map[(emp, date_str)] = (running_violations, penalty_str)
+                    else:
+                        violation_map[(emp, date_str)] = (0, '')
+
         serialized_data = []
         for r in records:
             d = r.to_dict()
-            # Clean string values like "None" or "null"
             if d.get("alias_id") in ["None", "null", "None", None, ""]:
                 d["alias_id"] = None
             
-            # Backfill from Employee table if present
             if r.person_id in emp_data:
                 if not d.get("alias_id"):
                     d["alias_id"] = emp_data[r.person_id]["alias_id"]
                 if not d.get("avatar_url") or d.get("avatar_url").strip() == "":
                     d["avatar_url"] = emp_data[r.person_id]["avatar_url"]
+            
+            # Map precalculated monthly violation index and penalty
+            emp_key = r.person_id or r.alias_id or r.person_name or 'unknown'
+            date_str = r.time.strftime('%Y-%m-%d')
+            v_info = violation_map.get((emp_key, date_str), (0, ''))
+            d["violation_index"] = v_info[0]
+            d["violation_penalty"] = v_info[1]
                     
             serialized_data.append(d)
 

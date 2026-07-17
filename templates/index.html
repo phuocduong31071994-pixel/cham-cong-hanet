@@ -1393,7 +1393,9 @@
                                 place_name: record.place_name || '',
                                 date: datePart,
                                 scans: [],
-                                holiday_type: ''
+                                holiday_type: '',
+                                violationIndex: record.violation_index || 0,
+                                violationPenalty: record.violation_penalty || ''
                             };
                         } else {
                             // Keep the longest/most complete name (e.g. "Dương Hồng Phước" > "Phước")
@@ -1419,7 +1421,7 @@
                         }
                     });
 
-                    // Sort check-in groups chronologically (oldest to newest) to count running violations per employee per month
+                    // Convert grouped object to array and sort by date desc for display
                     const parseDateHelper = (dStr) => {
                         if (!dStr) return new Date(0);
                         const parts = dStr.split('/');
@@ -1427,57 +1429,6 @@
                         return new Date(parts[2], parts[1] - 1, parts[0]);
                     };
 
-                    const chronologicalGroups = Object.values(grouped).sort((a, b) => parseDateHelper(a.date) - parseDateHelper(b.date));
-                    const violationCounters = {};
-
-                    chronologicalGroups.forEach(group => {
-                        if (group.holiday_type === 'P' || group.holiday_type === 'H') {
-                            group.violationIndex = 0;
-                            group.violationPenalty = '';
-                            return;
-                        }
-
-                        const dateParts = group.date.split('/');
-                        if (dateParts.length < 3) {
-                            group.violationIndex = 0;
-                            group.violationPenalty = '';
-                            return;
-                        }
-                        const monthKey = `${dateParts[2]}-${dateParts[1]}`;
-                        const employeeId = group.person_id || group.alias_id || group.person_name;
-                        const counterKey = `${employeeId}_${monthKey}`;
-
-                        const checkInTime = group.scans[0] || '';
-                        const checkOutTime = group.scans.length > 1 ? group.scans[group.scans.length - 1] : '';
-                        const analysis = getAttendanceAnalysis(checkInTime, checkOutTime);
-
-                        // Violation: isLate (after 9:15) or isEarlyLeave (before 18:00, not including missing checkouts)
-                        const hasViolation = analysis.isLate || (analysis.isEarlyLeave && !analysis.isMissingCheckout);
-
-                        if (hasViolation) {
-                            if (!violationCounters[counterKey]) {
-                                violationCounters[counterKey] = 0;
-                            }
-                            violationCounters[counterKey] += 1;
-                            const currentViolations = violationCounters[counterKey];
-                            group.violationIndex = currentViolations;
-
-                            if (currentViolations <= 3) {
-                                group.violationPenalty = `Vi phạm lần ${currentViolations}`;
-                            } else if (currentViolations === 4) {
-                                group.violationPenalty = `Cảnh báo nhắc nhở (Lần 4)`;
-                            } else if (currentViolations === 5) {
-                                group.violationPenalty = `Phạt 50k (Lần 5)`;
-                            } else {
-                                group.violationPenalty = `Phạt 150k (Lần ${currentViolations})`;
-                            }
-                        } else {
-                            group.violationIndex = 0;
-                            group.violationPenalty = '';
-                        }
-                    });
-
-                    // Convert grouped object to array and sort by date desc for display
                     const groupedList = Object.values(grouped).sort((a, b) => parseDateHelper(b.date) - parseDateHelper(a.date));
 
                     let newHTML = '';
