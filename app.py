@@ -392,7 +392,10 @@ def sync_employee_names_sync(force=False):
         return False, str(e)
 
 def sync_employee_names():
-    threading.Thread(target=lambda: sync_employee_names_sync(force=False)).start()
+    def run_sync():
+        with app.app_context():
+            sync_employee_names_sync(force=False)
+    threading.Thread(target=run_sync).start()
 
 def sync_hanet_history_for_range(start_date_str, end_date_str):
     """
