@@ -590,7 +590,7 @@
                 const T_in = parseTimeToMinutes(checkInStr);
                 const isLate = T_in > 555; // After 09:15:00
                 const lateMinutes = isLate ? Math.round(T_in - 555) : 0; // Late relative to 09:15 standard
-                const requireLarkApproval = T_in > 570; // Late by more than 30 mins (after 9:30 AM)
+                const requireLarkLateApproval = T_in > 570; // Late by more than 30 mins (after 9:30 AM)
 
                 if (!checkOutStr) {
                     return {
@@ -602,7 +602,8 @@
                         isInsufficient: false,
                         workHours: 0,
                         targetCheckoutStr: '',
-                        requireLarkApproval,
+                        requireLarkLateApproval,
+                        requireLarkEarlyApproval: false,
                         T_in,
                         T_out: 0
                     };
@@ -640,7 +641,7 @@
                 const isEarlyLeave = T_out < 1080; // Strictly before 18:00 (1080 minutes)
                 const earlyLeaveMinutes = isEarlyLeave ? Math.round(1080 - T_out) : 0;
                 const isInsufficient = workHours < 7.5;
-                const hasLarkWarning = (T_in > 570) || (T_out < 1050); // check-in after 9:30 OR check-out before 17:30
+                const requireLarkEarlyApproval = T_out < 1050; // Early leave by more than 30 mins (before 17:30 PM)
 
                 return {
                     isLate,
@@ -651,7 +652,8 @@
                     isInsufficient,
                     workHours,
                     targetCheckoutStr: formatMinutesToTime(T_target_out),
-                    requireLarkApproval: hasLarkWarning,
+                    requireLarkLateApproval,
+                    requireLarkEarlyApproval,
                     T_in,
                     T_out
                 };
@@ -1528,7 +1530,7 @@
                             }
                         }
 
-                        if (analysis.requireLarkApproval) {
+                        if (analysis.requireLarkLateApproval) {
                             badgesHtml += `
                                 <span style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
@@ -1536,7 +1538,20 @@
                                         <line x1="12" y1="9" x2="12" y2="13"></line>
                                         <line x1="12" y1="17" x2="12.01" y2="17"></line>
                                     </svg>
-                                    Trễ so với quy định, phải xin phê duyệt qua Lark
+                                    Trễ so với quy định, xin phê duyệt qua Lark
+                                </span>
+                            `;
+                        }
+
+                        if (analysis.requireLarkEarlyApproval) {
+                            badgesHtml += `
+                                <span style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3); color: #ef4444; font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
+                                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                                    </svg>
+                                    Sớm so với quy định, xin phê duyệt qua Lark
                                 </span>
                             `;
                         }
@@ -1795,13 +1810,13 @@ timer = setTimeout(loadData, 300);
                             let lateStr = "Đúng giờ";
                             if (analysis.isLate) {
                                 lateStr = `Đi trễ (${analysis.lateMinutes} phút)`;
-                                if (analysis.T_in > 570) {
-                                    lateStr += " (Cần duyệt qua Lark)";
+                                if (analysis.requireLarkLateApproval) {
+                                    lateStr += " (Trễ so với quy định, xin phê duyệt qua Lark)";
                                 }
                             } else if (analysis.isMissingCheckout) {
                                 lateStr = "Thiếu quét RA";
-                                if (analysis.T_in > 570) {
-                                    lateStr += " (Cần duyệt qua Lark)";
+                                if (analysis.requireLarkLateApproval) {
+                                    lateStr += " (Trễ so với quy định, xin phê duyệt qua Lark)";
                                 }
                             }
 
@@ -1810,8 +1825,8 @@ timer = setTimeout(loadData, 300);
                                 earlyStr = "Thiếu quét RA";
                             } else if (analysis.isEarlyLeave) {
                                 earlyStr = `Về sớm (${analysis.earlyLeaveMinutes} phút)`;
-                                if (analysis.T_out && analysis.T_out < 1050) {
-                                    earlyStr += " (Cần duyệt qua Lark)";
+                                if (analysis.requireLarkEarlyApproval) {
+                                    earlyStr += " (Sớm so với quy định, xin phê duyệt qua Lark)";
                                 }
                             } else {
                                 earlyStr = "Đúng giờ";
