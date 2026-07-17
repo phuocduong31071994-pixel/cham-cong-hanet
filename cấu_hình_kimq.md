@@ -34,9 +34,9 @@ Dự án này là hệ thống Web Tra cứu và Bổ sung công quẹt thẻ Ha
 * **Thời gian bắt đầu đi trễ:** Sau 9h15 mới tính là đi trễ (tức là từ 09:15:01 trở đi).
 * **Công thức tính thời gian trễ:** Thời gian trễ (phút) = Giờ vào (phút) - 9h15 (555 phút).
 * **Điều kiện Cảnh báo phê duyệt Lark (Quá 30 phút):**
-  * Nếu giờ quét vào muộn hơn **9h30** (sau 9:30 AM).
-  * Hoặc nếu giờ quét ra sớm hơn **17h30** (trước 5:30 PM).
-  * ➔ Hệ thống hiển thị nhãn cảnh báo đỏ: **"Trễ so với quy định, phải xin phê duyệt qua Lark"**.
+  * Nếu giờ quét vào muộn hơn **9h30** (sau 9:30 AM) ➔ Nhãn: **"Trễ so với quy định, xin phê duyệt qua Lark"**.
+  * Nếu giờ quét ra sớm hơn **17h30** (trước 5:30 PM) ➔ Nhãn: **"Sớm so với quy định, xin phê duyệt qua Lark"**.
+  * Cả hai nhãn hoạt động độc lập và hiển thị tương ứng trên bảng công hoặc đính kèm trong báo cáo Excel.
 
 ## 7. Quy chế phạt đi trễ / về sớm trong tháng
 * **Hạn mức miễn phạt:** Mỗi nhân sự được miễn phạt **3 lần đầu tiên** đi trễ hoặc về sớm cộng dồn trong 1 tháng dương lịch (Ví dụ: đi trễ 2 lần + về sớm 1 lần = 3 lần vi phạm).
