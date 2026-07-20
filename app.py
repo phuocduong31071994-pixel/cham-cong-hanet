@@ -618,15 +618,22 @@ def get_checkins():
 
         adj_map = {(adj.person_id, adj.date): adj for adj in adjustments}
 
-        # Filter out raw records that are overridden by admin adjustments
+        # Filter out raw records that are overridden by admin adjustments, EXCEPT for wfh_am/wfh_pm which use raw times
         filtered_records = []
         for r in raw_records:
             date_str = r.time.strftime('%Y-%m-%d')
-            if (r.person_id, date_str) not in adj_map:
+            adj = adj_map.get((r.person_id, date_str))
+            if adj is None:
+                filtered_records.append(r)
+            elif adj.adjustment_type in ['wfh_am', 'wfh_pm']:
+                r.is_adjusted = True
+                r.adjustment_note = adj.note or ('WFH buổi sáng' if adj.adjustment_type == 'wfh_am' else 'WFH buổi chiều')
                 filtered_records.append(r)
 
         # Append simulated scans for each adjustment
         for adj in adjustments:
+            if adj.adjustment_type in ['wfh_am', 'wfh_pm']:
+                continue
             emp = Employee.query.filter_by(person_id=adj.person_id).first()
             emp_name = emp.name if emp else "Nhân viên"
             emp_alias = emp.alias_id if emp else ""

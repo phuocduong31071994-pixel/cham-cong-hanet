@@ -532,6 +532,8 @@
                         <option value="time">Điều chỉnh giờ vào / giờ ra thủ công</option>
                         <option value="P">Nghỉ phép (P) - Tự động 09h00 -> 18h00</option>
                         <option value="H">Work From Home (H) - Tự động 09h00 -> 18h00</option>
+                        <option value="wfh_am">Work From Home (WFH) Buổi Sáng - Thực tế Hanet, Công 4.5h</option>
+                        <option value="wfh_pm">Work From Home (WFH) Buổi Chiều - Thực tế Hanet, Công 3.0h</option>
                     </select>
                 </div>
                 <div id="adj-times-group" class="hidden">
@@ -630,7 +632,7 @@
                 return `${yyyy}-${mm}-${dd}`;
             };
 
-            const getAttendanceAnalysis = (checkInStr, checkOutStr, isWfhMorning = false) => {
+            const getAttendanceAnalysis = (checkInStr, checkOutStr, isWfhMorning = false, isWfhAfternoon = false) => {
                 const parseTimeToMinutes = (tStr) => {
                     if (!tStr) return 0;
                     const parts = tStr.split(':');
@@ -647,9 +649,27 @@
                 };
 
                 const T_in = parseTimeToMinutes(checkInStr);
-                const isLate = isWfhMorning ? false : (T_in > 555); // After 09:15:00
-                const lateMinutes = isLate ? Math.round(T_in - 555) : 0; // Late relative to 09:15 standard
-                const requireLarkLateApproval = isWfhMorning ? false : (T_in > 570); // Late by more than 30 mins (after 9:30 AM)
+                
+                let isLate = false;
+                let lateMinutes = 0;
+                let requireLarkLateApproval = false;
+                
+                if (isWfhMorning) {
+                    // Afternoon starts at 13:30 (810 mins). Late after 15 mins (13:45 = 825 mins)
+                    isLate = T_in > 825;
+                    lateMinutes = isLate ? Math.round(T_in - 810) : 0;
+                    requireLarkLateApproval = T_in > 840; // After 14:00 (840 mins) requires Lark
+                } else if (isWfhAfternoon) {
+                    // Morning starts at 09:00 (540 mins). Late after 15 mins (09:15 = 555 mins)
+                    isLate = T_in > 555;
+                    lateMinutes = isLate ? Math.round(T_in - 540) : 0;
+                    requireLarkLateApproval = T_in > 570; // After 09:30 (570 mins)
+                } else {
+                    // Standard shift
+                    isLate = T_in > 555;
+                    lateMinutes = isLate ? Math.round(T_in - 540) : 0;
+                    requireLarkLateApproval = T_in > 570;
+                }
 
                 if (!checkOutStr) {
                     return {
@@ -672,35 +692,64 @@
 
                 // Calculate actual work hours
                 const duration = T_out - T_in;
-                // Overlap with lunch break [12:00, 13:30] = [720, 810]
-                const lunchStart = 720;
-                const lunchEnd = 810;
-                const overlapStart = Math.max(T_in, lunchStart);
-                const overlapEnd = Math.min(T_out, lunchEnd);
-                const overlap = Math.max(0, overlapEnd - overlapStart);
-
-                const netWorkMinutes = duration - overlap;
-                const workHours = Math.round((netWorkMinutes / 60) * 10) / 10; // Round to 1 decimal place
-
-                // Determine target checkout time to achieve 7.5 hours (450 minutes) of work
-                let T_start = T_in;
-                if (T_in < 540) {
-                    T_start = 540; // Starts at 09:00
-                } else if (T_in > 720 && T_in < 810) {
-                    T_start = 810; // Starts at 13:30 (after lunch break)
-                }
-
+                
+                let workHours = 0;
+                let isInsufficient = false;
+                let isEarlyLeave = false;
+                let earlyLeaveMinutes = 0;
+                let requireLarkEarlyApproval = false;
                 let T_target_out = 0;
-                if (T_start <= 720) {
-                    T_target_out = T_start + 450 + 90; // Add 1.5h lunch break
-                } else {
-                    T_target_out = T_start + 450;
-                }
 
-                const isEarlyLeave = T_out < 1080; // Strictly before 18:00 (1080 minutes)
-                const earlyLeaveMinutes = isEarlyLeave ? Math.round(1080 - T_out) : 0;
-                const isInsufficient = workHours < 7.5;
-                const requireLarkEarlyApproval = T_out < 1050; // Early leave by more than 30 mins (before 17:30 PM)
+                if (isWfhMorning) {
+                    // Morning WFH = 4.5h target
+                    const netWorkMinutes = duration;
+                    workHours = Math.round((netWorkMinutes / 60) * 10) / 10;
+                    isInsufficient = workHours < 4.5;
+                    
+                    isEarlyLeave = T_out < 1080; // Before 18:00
+                    earlyLeaveMinutes = isEarlyLeave ? Math.round(1080 - T_out) : 0;
+                    requireLarkEarlyApproval = T_out < 1050; // Before 17:30
+                    
+                    T_target_out = 1080; // 18:00
+                } else if (isWfhAfternoon) {
+                    // Afternoon WFH = 3.0h target
+                    const netWorkMinutes = duration;
+                    workHours = Math.round((netWorkMinutes / 60) * 10) / 10;
+                    isInsufficient = workHours < 3.0;
+                    
+                    isEarlyLeave = T_out < 720; // Before 12:00
+                    earlyLeaveMinutes = isEarlyLeave ? Math.round(720 - T_out) : 0;
+                    requireLarkEarlyApproval = T_out < 690; // Before 11:30
+                    
+                    T_target_out = 720; // 12:00
+                } else {
+                    // Standard shift (7.5h target)
+                    const lunchStart = 720;
+                    const lunchEnd = 810;
+                    const overlapStart = Math.max(T_in, lunchStart);
+                    const overlapEnd = Math.min(T_out, lunchEnd);
+                    const overlap = Math.max(0, overlapEnd - overlapStart);
+
+                    const netWorkMinutes = duration - overlap;
+                    workHours = Math.round((netWorkMinutes / 60) * 10) / 10;
+                    isInsufficient = workHours < 7.5;
+                    
+                    isEarlyLeave = T_out < 1080; // Before 18:00
+                    earlyLeaveMinutes = isEarlyLeave ? Math.round(1080 - T_out) : 0;
+                    requireLarkEarlyApproval = T_out < 1050; // Before 17:30
+                    
+                    let T_start = T_in;
+                    if (T_in < 540) {
+                        T_start = 540;
+                    } else if (T_in > 720 && T_in < 810) {
+                        T_start = 810;
+                    }
+                    if (T_start <= 720) {
+                        T_target_out = T_start + 450 + 90;
+                    } else {
+                        T_target_out = T_start + 450;
+                    }
+                }
 
                 return {
                     isLate,
@@ -1545,7 +1594,8 @@
 
                         // Run work hour analysis
                         const isWfhMorning = (group.date === '20/07/2026') || (group.adjustment_note && group.adjustment_note.toLowerCase().includes('wfh buổi sáng')) || (group.device_name && group.device_name.toLowerCase().includes('wfh buổi sáng'));
-                        const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning);
+                        const isWfhAfternoon = (group.adjustment_note && group.adjustment_note.toLowerCase().includes('wfh buổi chiều')) || (group.device_name && group.device_name.toLowerCase().includes('wfh buổi chiều'));
+                        const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning, isWfhAfternoon);
                         
                         let badgesHtml = '';
                         if (analysis.isMissingCheckout) {
@@ -1937,6 +1987,7 @@ timer = setTimeout(loadData, 300);
 
                             const dayScans = recordMap[key] || [];
                             let isWfhMorning = (datePart === '20/07/2026');
+                            let isWfhAfternoon = false;
                             dayScans.forEach(r => {
                                 if (r.adjustment_note && r.adjustment_note.toLowerCase().includes('wfh buổi sáng')) {
                                     isWfhMorning = true;
@@ -1944,9 +1995,15 @@ timer = setTimeout(loadData, 300);
                                 if (r.device_name && r.device_name.toLowerCase().includes('wfh buổi sáng')) {
                                     isWfhMorning = true;
                                 }
+                                if (r.adjustment_note && r.adjustment_note.toLowerCase().includes('wfh buổi chiều')) {
+                                    isWfhAfternoon = true;
+                                }
+                                if (r.device_name && r.device_name.toLowerCase().includes('wfh buổi chiều')) {
+                                    isWfhAfternoon = true;
+                                }
                             });
 
-                            const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning);
+                            const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning, isWfhAfternoon);
 
                             let lateStr = "Đúng giờ";
                             if (analysis.isLate) {
@@ -2507,6 +2564,10 @@ timer = setTimeout(loadData, 300);
                     adjTypeSelect.value = 'P';
                 } else if (holidayType === 'H') {
                     adjTypeSelect.value = 'H';
+                } else if (note && note.toLowerCase().includes('wfh buổi sáng')) {
+                    adjTypeSelect.value = 'wfh_am';
+                } else if (note && note.toLowerCase().includes('wfh buổi chiều')) {
+                    adjTypeSelect.value = 'wfh_pm';
                 } else if (checkIn || checkOut) {
                     adjTypeSelect.value = 'time';
                 } else {
@@ -2544,7 +2605,11 @@ timer = setTimeout(loadData, 300);
                 const adjType = adjTypeSelect.value;
                 const checkInVal = adjCheckInInput.value.trim();
                 const checkOutVal = adjCheckOutInput.value.trim();
-                const noteVal = adjNoteInput.value.trim();
+                let noteVal = adjNoteInput.value.trim();
+                if (!noteVal) {
+                    if (adjType === 'wfh_am') noteVal = 'WFH buổi sáng';
+                    else if (adjType === 'wfh_pm') noteVal = 'WFH buổi chiều';
+                }
 
                 const submitBtn = document.getElementById('adj-submit-btn');
                 submitBtn.disabled = true;
