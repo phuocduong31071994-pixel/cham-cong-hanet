@@ -630,7 +630,7 @@
                 return `${yyyy}-${mm}-${dd}`;
             };
 
-            const getAttendanceAnalysis = (checkInStr, checkOutStr) => {
+            const getAttendanceAnalysis = (checkInStr, checkOutStr, isWfhMorning = false) => {
                 const parseTimeToMinutes = (tStr) => {
                     if (!tStr) return 0;
                     const parts = tStr.split(':');
@@ -647,9 +647,9 @@
                 };
 
                 const T_in = parseTimeToMinutes(checkInStr);
-                const isLate = T_in > 555; // After 09:15:00
+                const isLate = isWfhMorning ? false : (T_in > 555); // After 09:15:00
                 const lateMinutes = isLate ? Math.round(T_in - 555) : 0; // Late relative to 09:15 standard
-                const requireLarkLateApproval = T_in > 570; // Late by more than 30 mins (after 9:30 AM)
+                const requireLarkLateApproval = isWfhMorning ? false : (T_in > 570); // Late by more than 30 mins (after 9:30 AM)
 
                 if (!checkOutStr) {
                     return {
@@ -1544,7 +1544,8 @@
                         const allScansList = group.scans.join(', ');
 
                         // Run work hour analysis
-                        const analysis = getAttendanceAnalysis(checkInTime, checkOutTime);
+                        const isWfhMorning = (group.adjustment_note && group.adjustment_note.toLowerCase().includes('wfh buổi sáng')) || (group.device_name && group.device_name.toLowerCase().includes('wfh buổi sáng'));
+                        const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning);
                         
                         let badgesHtml = '';
                         if (analysis.isMissingCheckout) {
@@ -1934,7 +1935,18 @@ timer = setTimeout(loadData, 300);
                             const checkInTime = scans[0] || '';
                             const checkOutTime = scans.length > 1 ? scans[scans.length - 1] : '';
 
-                            const analysis = getAttendanceAnalysis(checkInTime, checkOutTime);
+                            const dayScans = recordMap[key] || [];
+                            let isWfhMorning = false;
+                            dayScans.forEach(r => {
+                                if (r.adjustment_note && r.adjustment_note.toLowerCase().includes('wfh buổi sáng')) {
+                                    isWfhMorning = true;
+                                }
+                                if (r.device_name && r.device_name.toLowerCase().includes('wfh buổi sáng')) {
+                                    isWfhMorning = true;
+                                }
+                            });
+
+                            const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning);
 
                             let lateStr = "Đúng giờ";
                             if (analysis.isLate) {

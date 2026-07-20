@@ -738,8 +738,20 @@ def get_checkins():
                     check_in_time = day_scans[0].time
                     check_out_time = day_scans[-1].time if len(day_scans) > 1 else None
                     
+                    # Check if adjusted for WFH morning
+                    is_wfh_morning = False
+                    for s in day_scans:
+                        note_str = getattr(s, 'adjustment_note', '') or ''
+                        dev_str = getattr(s, 'device_name', '') or ''
+                        if note_str and 'wfh buổi sáng' in note_str.lower():
+                            is_wfh_morning = True
+                            break
+                        if dev_str and 'wfh buổi sáng' in dev_str.lower():
+                            is_wfh_morning = True
+                            break
+                            
                     t_in_mins = check_in_time.hour * 60 + check_in_time.minute + check_in_time.second / 60.0
-                    is_late = t_in_mins > 555 # after 9:15 AM
+                    is_late = False if is_wfh_morning else (t_in_mins > 555) # after 9:15 AM
                     
                     is_early_leave = False
                     if check_out_time is not None:
