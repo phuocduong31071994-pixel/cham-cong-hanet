@@ -1544,7 +1544,7 @@
                         const allScansList = group.scans.join(', ');
 
                         // Run work hour analysis
-                        const isWfhMorning = (group.adjustment_note && group.adjustment_note.toLowerCase().includes('wfh buổi sáng')) || (group.device_name && group.device_name.toLowerCase().includes('wfh buổi sáng'));
+                        const isWfhMorning = (group.date === '20/07/2026') || (group.adjustment_note && group.adjustment_note.toLowerCase().includes('wfh buổi sáng')) || (group.device_name && group.device_name.toLowerCase().includes('wfh buổi sáng'));
                         const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning);
                         
                         let badgesHtml = '';
@@ -1936,7 +1936,7 @@ timer = setTimeout(loadData, 300);
                             const checkOutTime = scans.length > 1 ? scans[scans.length - 1] : '';
 
                             const dayScans = recordMap[key] || [];
-                            let isWfhMorning = false;
+                            let isWfhMorning = (datePart === '20/07/2026');
                             dayScans.forEach(r => {
                                 if (r.adjustment_note && r.adjustment_note.toLowerCase().includes('wfh buổi sáng')) {
                                     isWfhMorning = true;

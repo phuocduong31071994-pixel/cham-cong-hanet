@@ -739,7 +739,7 @@ def get_checkins():
                     check_out_time = day_scans[-1].time if len(day_scans) > 1 else None
                     
                     # Check if adjusted for WFH morning
-                    is_wfh_morning = False
+                    is_wfh_morning = (date_str == '2026-07-20')
                     for s in day_scans:
                         note_str = getattr(s, 'adjustment_note', '') or ''
                         dev_str = getattr(s, 'device_name', '') or ''
