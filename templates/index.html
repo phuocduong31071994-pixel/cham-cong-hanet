@@ -657,17 +657,17 @@
                 if (isWfhMorning) {
                     // Afternoon starts at 13:30 (810 mins). Late after 15 mins (13:45 = 825 mins)
                     isLate = T_in > 825;
-                    lateMinutes = isLate ? Math.round(T_in - 810) : 0;
+                    lateMinutes = isLate ? Math.round(T_in - 825) : 0;
                     requireLarkLateApproval = T_in > 840; // After 14:00 (840 mins) requires Lark
                 } else if (isWfhAfternoon) {
                     // Morning starts at 09:00 (540 mins). Late after 15 mins (09:15 = 555 mins)
                     isLate = T_in > 555;
-                    lateMinutes = isLate ? Math.round(T_in - 540) : 0;
+                    lateMinutes = isLate ? Math.round(T_in - 555) : 0;
                     requireLarkLateApproval = T_in > 570; // After 09:30 (570 mins)
                 } else {
                     // Standard shift
                     isLate = T_in > 555;
-                    lateMinutes = isLate ? Math.round(T_in - 540) : 0;
+                    lateMinutes = isLate ? Math.round(T_in - 555) : 0;
                     requireLarkLateApproval = T_in > 570;
                 }
 
