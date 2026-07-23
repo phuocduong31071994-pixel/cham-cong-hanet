@@ -242,6 +242,172 @@ def clear_db():
     except Exception as e:
         return f"Loi: {str(e)}", 500
 
+def process_lark_adjustment(employee_name, date_str, leave_type, note):
+    # Match employee
+    emp = Employee.query.filter(Employee.name.ilike(f"%{employee_name.strip()}%")).first()
+    if not emp:
+        logging.error(f"Lark sync: Employee '{employee_name}' not found")
+        return False, f"Employee '{employee_name}' not found"
+    
+    # Determine adjustment type
+    adj_type = 'time'
+    check_in = None
+    check_out = None
+    
+    lt_lower = str(leave_type or '').lower()
+    if 'wfh' in lt_lower or 'work from home' in lt_lower or 'home' in lt_lower:
+        if 'sáng' in lt_lower or 'am' in lt_lower or 'morning' in lt_lower:
+            adj_type = 'wfh_am'
+        elif 'chiều' in lt_lower or 'pm' in lt_lower or 'afternoon' in lt_lower:
+            adj_type = 'wfh_pm'
+        else:
+            adj_type = 'H'
+            check_in = '09:00:00'
+            check_out = '18:00:00'
+    elif 'nghỉ' in lt_lower or 'phép' in lt_lower or 'leave' in lt_lower or 'p' == lt_lower:
+        adj_type = 'P'
+        check_in = '09:00:00'
+        check_out = '18:00:00'
+    elif lt_lower in ['time', 'wfh_am', 'wfh_pm', 'p', 'h']:
+        adj_type = leave_type
+        if adj_type == 'P' or adj_type == 'H':
+            check_in = '09:00:00'
+            check_out = '18:00:00'
+            
+    # Upsert adjustment
+    adj = AttendanceAdjustment.query.filter_by(person_id=emp.person_id, date=date_str).first()
+    if not adj:
+        adj = AttendanceAdjustment(
+            person_id=emp.person_id,
+            date=date_str,
+            check_in=check_in,
+            check_out=check_out,
+            adjustment_type=adj_type,
+            note=note or f"Lark Approval: {leave_type or ''}"
+        )
+        db.session.add(adj)
+    else:
+        adj.adjustment_type = adj_type
+        adj.check_in = check_in
+        adj.check_out = check_out
+        adj.note = note or f"Lark Approval: {leave_type or ''}"
+        
+    db.session.commit()
+    logging.info(f"Lark adjustment: successfully updated for {emp.name} on {date_str} to type {adj_type}")
+    return True, f"Successfully updated adjustment for {emp.name}"
+
+# Webhook Endpoint for Lark Suite
+@app.route('/webhook/lark', methods=['POST'])
+def lark_webhook():
+    try:
+        data = request.json or {}
+        logging.info(f"Incoming Lark Webhook Payload: {data}")
+
+        # 1. Handle URL Verification Challenge
+        if data.get("type") == "url_verification":
+            return jsonify({"challenge": data.get("challenge")})
+
+        # 2. Handle Simple/Custom Automation Payload
+        # Example: {"employee_name": "Lê Văn Quyn", "date": "2026-07-20", "leave_type": "WFH sáng", "note": "Ghi chú nếu có"}
+        employee_name = data.get("employee_name") or data.get("name")
+        date_str = data.get("date") # Expected 'YYYY-MM-DD'
+        leave_type = data.get("leave_type")
+
+        if employee_name and date_str:
+            success, msg = process_lark_adjustment(employee_name, date_str, leave_type, data.get("note"))
+            if success:
+                return jsonify({"status": "success", "message": msg})
+            else:
+                return jsonify({"status": "error", "message": msg}), 404
+
+        # 3. Handle official Lark Approval Events (if APP_ID is configured)
+        event = data.get("event", {})
+        header = data.get("header", {})
+        event_type = header.get("event_type") or data.get("event_type")
+
+        if event_type == "approval.instance.updated":
+            instance_code = event.get("instance_code") or data.get("instance_code")
+            status = event.get("status") or data.get("status")
+            
+            lark_app_id = os.getenv("LARK_APP_ID")
+            lark_app_secret = os.getenv("LARK_APP_SECRET")
+            
+            if status == "APPROVED" and instance_code and lark_app_id and lark_app_secret:
+                # Process in a background thread to prevent Lark request timeouts
+                def process_lark_approval_bg():
+                    with app.app_context():
+                        try:
+                            # a. Get Tenant Access Token
+                            token_url = "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal"
+                            tok_res = requests.post(token_url, json={"app_id": lark_app_id, "app_secret": lark_app_secret}, timeout=10)
+                            tok_json = tok_res.json()
+                            tenant_token = tok_json.get("tenant_access_token")
+                            
+                            if not tenant_token:
+                                logging.error("Failed to fetch tenant token from Lark")
+                                return
+                                
+                            # b. Get Instance Details
+                            inst_url = f"https://open.larksuite.com/open-apis/approval/v4/instances/{instance_code}"
+                            headers = {"Authorization": f"Bearer {tenant_token}"}
+                            inst_res = requests.get(inst_url, headers=headers, timeout=10)
+                            inst_data = inst_res.json().get("data", {})
+                            
+                            # c. Get Initiator user name
+                            user_id = inst_data.get("user_id")
+                            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}"
+                            user_res = requests.get(user_url, headers=headers, timeout=10)
+                            user_name = user_res.json().get("data", {}).get("user", {}).get("name")
+                            
+                            if not user_name:
+                                logging.error(f"Could not retrieve user details for Lark user ID {user_id}")
+                                return
+                                
+                            # d. Parse form data to find dates and leave types
+                            form_str = inst_data.get("form", "[]")
+                            import json
+                            form_fields = json.loads(form_str)
+                            
+                            # Standard leaves usually have fields containing start_time, end_time, etc.
+                            logging.info(f"Lark Approval Form Fields: {form_fields}")
+                            
+                            # Find start/end dates
+                            start_date_val = None
+                            leave_type_val = inst_data.get("approval_name") or "Leave/WFH"
+                            
+                            for f in form_fields:
+                                f_type = f.get("type")
+                                f_val = f.get("value")
+                                if f_type == "dateInterval" and isinstance(f_val, dict):
+                                    start_date_val = f_val.get("start", "").split(" ")[0]
+                                elif f_type == "date" and isinstance(f_val, str):
+                                    start_date_val = f_val.split(" ")[0]
+                                elif f_type == "select" and isinstance(f_val, str):
+                                    leave_type_val = f_val
+                                    
+                            if not start_date_val:
+                                start_time_epoch = inst_data.get("start_time")
+                                if start_time_epoch:
+                                    start_date_val = datetime.fromtimestamp(int(start_time_epoch)/1000).strftime("%Y-%m-%d")
+                                    
+                            if start_date_val:
+                                process_lark_adjustment(
+                                    user_name,
+                                    start_date_val,
+                                    leave_type_val,
+                                    f"Lark duyệt: {inst_data.get('approval_name', 'Nghỉ phép')}"
+                                )
+                        except Exception as bg_err:
+                            logging.error(f"Error in process_lark_approval_bg: {bg_err}")
+                            
+                threading.Thread(target=process_lark_approval_bg).start()
+                return jsonify({"status": "success", "message": "Approval processing started"})
+
+        return jsonify({"status": "ignored", "message": "Event is not processed"})
+    except Exception as e:
+        logging.error(f"Lark Webhook Error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 # Webhook Endpoint (Receives Post Requests from Hanet AI Camera)
 @app.route('/webhook/hanet', methods=['POST'])
 def hanet_webhook():
