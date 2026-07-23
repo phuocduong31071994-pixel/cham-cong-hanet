@@ -243,10 +243,74 @@ def clear_db():
         return f"Loi: {str(e)}", 500
 
 def process_lark_adjustment(employee_name, date_str, leave_type, note):
-    # Match employee
-    emp = Employee.query.filter(Employee.name.ilike(f"%{employee_name.strip()}%")).first()
+    if not employee_name:
+        return False, "Employee name is empty"
+        
+    # Normalize input name
+    name_clean = employee_name.strip().lower()
+    
+    # Extract nickname if name contains '|' (e.g. "Zane | Coincu" -> "zane")
+    if '|' in name_clean:
+        name_clean = name_clean.split('|')[0].strip()
+        
+    # Accent-stripping helper
+    import unicodedata
+    def remove_accents(input_str):
+        if not input_str:
+            return ""
+        nfkd_form = unicodedata.normalize('NFKD', input_str)
+        only_ascii = nfkd_form.encode('ASCII', 'ignore').decode('utf-8')
+        return only_ascii.lower().strip()
+        
+    name_clean_no_accent = remove_accents(name_clean)
+
+    # Explicit mapping dict between Lark names/nicknames and KimQ database names
+    lark_to_kimq_map = {
+        "zane": "Phạm Tấn Thịnh",
+        "leon": "Nguyễn Chí Linh",
+        "david": "Trần Duy Sơn",
+        "tommy": "Đặng Xuân Hoàng",
+        "quyn": "Lê Văn Quyn",
+        "bugi": "Phan Nhật Bảo"
+    }
+    
+    matched_db_name = None
+    if name_clean_no_accent in lark_to_kimq_map:
+        matched_db_name = lark_to_kimq_map[name_clean_no_accent]
+    else:
+        # Try substring match in keys
+        for k, v in lark_to_kimq_map.items():
+            if k in name_clean_no_accent or name_clean_no_accent in k:
+                matched_db_name = v
+                break
+                
+    emp = None
+    if matched_db_name:
+        emp = Employee.query.filter_by(name=matched_db_name).first()
+        
     if not emp:
-        logging.error(f"Lark sync: Employee '{employee_name}' not found")
+        # Fallback to direct name query
+        emp = Employee.query.filter(Employee.name.ilike(f"%{employee_name.strip()}%")).first()
+        
+    if not emp:
+        # Fallback to accent-free name query
+        all_emps = Employee.query.all()
+        for e in all_emps:
+            if remove_accents(e.name) == name_clean_no_accent:
+                emp = e
+                break
+                
+    if not emp:
+        # Fallback to alias matching
+        if 'all_emps' not in locals():
+            all_emps = Employee.query.all()
+        for e in all_emps:
+            if e.alias_id and remove_accents(e.alias_id) == name_clean_no_accent:
+                emp = e
+                break
+                
+    if not emp:
+        logging.error(f"Lark sync: Employee '{employee_name}' (normalized: '{name_clean_no_accent}') not found in KimQ database")
         return False, f"Employee '{employee_name}' not found"
     
     # Determine adjustment type
