@@ -328,13 +328,17 @@ def process_lark_adjustment(employee_name, date_str, leave_type, note):
             adj_type = 'H'
             check_in = '09:00:00'
             check_out = '18:00:00'
-    elif 'nghỉ' in lt_lower or 'phép' in lt_lower or 'leave' in lt_lower or 'p' == lt_lower:
+    elif 'không lương' in lt_lower or 'unpaid' in lt_lower or 'kl' == lt_lower:
+        adj_type = 'KL'
+        check_in = '09:00:00'
+        check_out = '18:00:00'
+    elif 'nghỉ' in lt_lower or 'phép' in lt_lower or 'leave' in lt_lower or 'p' == lt_lower or 'annual' in lt_lower:
         adj_type = 'P'
         check_in = '09:00:00'
         check_out = '18:00:00'
-    elif lt_lower in ['time', 'wfh_am', 'wfh_pm', 'p', 'h']:
+    elif lt_lower in ['time', 'wfh_am', 'wfh_pm', 'p', 'h', 'kl']:
         adj_type = leave_type
-        if adj_type == 'P' or adj_type == 'H':
+        if adj_type in ['P', 'H', 'KL']:
             check_in = '09:00:00'
             check_out = '18:00:00'
             
@@ -877,7 +881,7 @@ def get_checkins():
                 person_name=emp_name,
                 alias_id=emp_alias,
                 time=datetime.strptime(f"{adj.date} {check_in_time_str}", '%Y-%m-%d %H:%M:%S'),
-                place_name="Nghỉ phép (P)" if adj.adjustment_type == 'P' else ("Work From Home (H)" if adj.adjustment_type == 'H' else "Văn phòng"),
+                place_name="Nghỉ phép (P)" if adj.adjustment_type == 'P' else ("Work From Home (H)" if adj.adjustment_type == 'H' else ("Nghỉ không lương (KL)" if adj.adjustment_type == 'KL' else "Văn phòng")),
                 device_name=f"Admin điều chỉnh: {adj.note or ''}",
                 avatar_url=emp_avatar
             )
@@ -885,8 +889,8 @@ def get_checkins():
             c_in.adjustment_note = adj.note
             filtered_records.append(c_in)
 
-            # Check-out scan (only if check_out is provided, or if P/H)
-            if adj.check_out or adj.adjustment_type in ['P', 'H']:
+            # Check-out scan (only if check_out is provided, or if P/H/KL)
+            if adj.check_out or adj.adjustment_type in ['P', 'H', 'KL']:
                 check_out_time_str = adj.check_out or "18:00:00"
                 c_out = CheckIn(
                     id=-2,
@@ -894,7 +898,7 @@ def get_checkins():
                     person_name=emp_name,
                     alias_id=emp_alias,
                     time=datetime.strptime(f"{adj.date} {check_out_time_str}", '%Y-%m-%d %H:%M:%S'),
-                    place_name="Nghỉ phép (P)" if adj.adjustment_type == 'P' else ("Work From Home (H)" if adj.adjustment_type == 'H' else "Văn phòng"),
+                    place_name="Nghỉ phép (P)" if adj.adjustment_type == 'P' else ("Work From Home (H)" if adj.adjustment_type == 'H' else ("Nghỉ không lương (KL)" if adj.adjustment_type == 'KL' else "Văn phòng")),
                     device_name=f"Admin điều chỉnh: {adj.note or ''}",
                     avatar_url=emp_avatar
                 )

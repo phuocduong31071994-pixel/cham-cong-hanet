@@ -532,6 +532,7 @@
                         <option value="time">Điều chỉnh giờ vào / giờ ra thủ công</option>
                         <option value="P">Nghỉ phép (P) - Tự động 09h00 -> 18h00</option>
                         <option value="H">Work From Home (H) - Tự động 09h00 -> 18h00</option>
+                        <option value="KL">Nghỉ không lương (KL) - Tự động 09h00 -> 18h00, Công 0</option>
                         <option value="wfh_am">Work From Home (WFH) Buổi Sáng - Thực tế Hanet, Công 4.5h</option>
                         <option value="wfh_pm">Work From Home (WFH) Buổi Chiều - Thực tế Hanet, Công 3.0h</option>
                     </select>
@@ -1553,6 +1554,8 @@
                             grouped[key].holiday_type = 'P';
                         } else if (record.place_name === 'Work From Home (H)') {
                             grouped[key].holiday_type = 'H';
+                        } else if (record.place_name === 'Nghỉ không lương (KL)') {
+                            grouped[key].holiday_type = 'KL';
                         }
 
                         if (timePart) {
@@ -1737,6 +1740,15 @@
                                 </span>
                                 <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
                                     Đủ công (7.5h)
+                                </span>
+                            `;
+                        } else if (group.holiday_type === 'KL') {
+                            badgesHtml = `
+                                <span style="background: rgba(249, 115, 22, 0.1); border: 1px solid rgba(249, 115, 22, 0.25); color: #f97316; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Nghỉ không lương (KL)
+                                </span>
+                                <span style="background: rgba(107, 114, 128, 0.1); border: 1px solid rgba(107, 114, 128, 0.25); color: #6b7280; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Công: 0
                                 </span>
                             `;
                         }
@@ -2564,6 +2576,8 @@ timer = setTimeout(loadData, 300);
                     adjTypeSelect.value = 'P';
                 } else if (holidayType === 'H') {
                     adjTypeSelect.value = 'H';
+                } else if (holidayType === 'KL') {
+                    adjTypeSelect.value = 'KL';
                 } else if (note && note.toLowerCase().includes('wfh buổi sáng')) {
                     adjTypeSelect.value = 'wfh_am';
                 } else if (note && note.toLowerCase().includes('wfh buổi chiều')) {
@@ -2588,7 +2602,7 @@ timer = setTimeout(loadData, 300);
                     adjTimesGroup.classList.remove('hidden');
                 } else {
                     adjTimesGroup.classList.add('hidden');
-                    if (val === 'P' || val === 'H') {
+                    if (val === 'P' || val === 'H' || val === 'KL') {
                         adjCheckInInput.value = '09:00:00';
                         adjCheckOutInput.value = '18:00:00';
                     } else {
@@ -2609,6 +2623,7 @@ timer = setTimeout(loadData, 300);
                 if (!noteVal) {
                     if (adjType === 'wfh_am') noteVal = 'WFH buổi sáng';
                     else if (adjType === 'wfh_pm') noteVal = 'WFH buổi chiều';
+                    else if (adjType === 'KL') noteVal = 'Nghỉ không lương';
                 }
 
                 const submitBtn = document.getElementById('adj-submit-btn');
