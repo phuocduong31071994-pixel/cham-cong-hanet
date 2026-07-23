@@ -1039,6 +1039,48 @@ def get_checkins():
                     
             serialized_data.append(d)
 
+        # Generate dummy "Absent" records for active employees with no scans/adjustments on weekdays
+        all_employees = Employee.query.all()
+        try:
+            d_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            d_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+            
+            # Keep track of which (person_id, date_str) have records in records
+            has_records_map = set()
+            for r in records:
+                date_str = r.time.strftime('%Y-%m-%d')
+                has_records_map.add((r.person_id, date_str))
+
+            curr_d = d_start
+            while curr_d <= d_end:
+                # Check if it's a weekday (Monday=0 to Friday=4)
+                if curr_d.weekday() < 5:
+                    curr_date_str = curr_d.strftime("%Y-%m-%d")
+                    friendly_date_str = curr_d.strftime("%d/%m/%Y")
+                    
+                    for emp in all_employees:
+                        if (emp.person_id, curr_date_str) not in has_records_map:
+                            dummy_d = {
+                                "id": -3,
+                                "person_id": emp.person_id,
+                                "alias_id": emp.alias_id,
+                                "person_name": emp.name,
+                                "time": friendly_date_str,  # Date only, no time -> splits to timePart = ''
+                                "place_id": None,
+                                "place_name": "Văn phòng",
+                                "device_id": None,
+                                "device_name": "Không có dữ liệu chấm công",
+                                "avatar_url": emp.avatar_url or "",
+                                "is_adjusted": False,
+                                "adjustment_note": "",
+                                "violation_index": 0,
+                                "violation_penalty": ""
+                            }
+                            serialized_data.append(dummy_d)
+                curr_d += timedelta(days=1)
+        except Exception as ex:
+            logging.error(f"Error generating dummy absent records: {ex}")
+
         return jsonify({
             "status": "success",
             "data": serialized_data,

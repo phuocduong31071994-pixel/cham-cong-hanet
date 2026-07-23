@@ -634,6 +634,24 @@
             };
 
             const getAttendanceAnalysis = (checkInStr, checkOutStr, isWfhMorning = false, isWfhAfternoon = false) => {
+                if (!checkInStr && !checkOutStr) {
+                    return {
+                        isAbsent: true,
+                        isLate: false,
+                        lateMinutes: 0,
+                        isMissingCheckout: false,
+                        isEarlyLeave: false,
+                        earlyLeaveMinutes: 0,
+                        isInsufficient: false,
+                        workHours: 0,
+                        targetCheckoutStr: '',
+                        requireLarkLateApproval: false,
+                        requireLarkEarlyApproval: false,
+                        T_in: 0,
+                        T_out: 0
+                    };
+                }
+
                 const parseTimeToMinutes = (tStr) => {
                     if (!tStr) return 0;
                     const parts = tStr.split(':');
@@ -1601,7 +1619,18 @@
                         const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning, isWfhAfternoon);
                         
                         let badgesHtml = '';
-                        if (analysis.isMissingCheckout) {
+                        if (analysis.isAbsent) {
+                            badgesHtml += `
+                                <span style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                    </svg>
+                                    Vắng mặt (Không chấm công)
+                                </span>
+                            `;
+                        } else if (analysis.isMissingCheckout) {
                             badgesHtml += `
                                 <span style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
@@ -1787,9 +1816,9 @@
                                             ` : ''}
                                         </div>
                                         <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
-                                            <div class="time-badge green-badge">
+                                            <div class="time-badge ${checkInTime ? 'green-badge' : 'grey-badge'}">
                                                 <span class="badge-label">VÀO</span>
-                                                <span class="badge-time">${checkInTime}</span>
+                                                <span class="badge-time">${checkInTime || '--:--:--'}</span>
                                             </div>
                                             <div class="time-badge ${checkOutTime ? 'orange-badge' : 'grey-badge'}">
                                                 <span class="badge-label">RA</span>
