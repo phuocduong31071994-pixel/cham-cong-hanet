@@ -2004,6 +2004,9 @@ timer = setTimeout(loadData, 300);
                             let holidayType = '';
                             let placeName = emp.place_name || '';
                             let requestNote = '';
+                            const dayScans = recordMap[key] || [];
+                            let isWfhMorning = (dateStr === '20/07/2026');
+                            let isWfhAfternoon = false;
 
                             recordMap[key].forEach(record => {
                                 if (record.place_name) placeName = record.place_name;
@@ -2012,6 +2015,8 @@ timer = setTimeout(loadData, 300);
                                     holidayType = 'P';
                                 } else if (record.place_name === 'Work From Home (H)') {
                                     holidayType = 'H';
+                                } else if (record.place_name === 'Nghỉ không lương (KL)') {
+                                    holidayType = 'KL';
                                 }
 
                                 if (record.is_adjusted) {
@@ -2020,29 +2025,24 @@ timer = setTimeout(loadData, 300);
 
                                 const timePart = (record.time || '').split(' ')[1] || '';
                                 if (timePart) scans.push(timePart);
+                                
+                                if (record.adjustment_note && record.adjustment_note.toLowerCase().includes('wfh buổi sáng')) {
+                                    isWfhMorning = true;
+                                }
+                                if (record.device_name && record.device_name.toLowerCase().includes('wfh buổi sáng')) {
+                                    isWfhMorning = true;
+                                }
+                                if (record.adjustment_note && record.adjustment_note.toLowerCase().includes('wfh buổi chiều')) {
+                                    isWfhAfternoon = true;
+                                }
+                                if (record.device_name && record.device_name.toLowerCase().includes('wfh buổi chiều')) {
+                                    isWfhAfternoon = true;
+                                }
                             });
 
                             scans.sort();
                             const checkInTime = scans[0] || '';
                             const checkOutTime = scans.length > 1 ? scans[scans.length - 1] : '';
-
-                            const dayScans = recordMap[key] || [];
-                            let isWfhMorning = (datePart === '20/07/2026');
-                            let isWfhAfternoon = false;
-                            dayScans.forEach(r => {
-                                if (r.adjustment_note && r.adjustment_note.toLowerCase().includes('wfh buổi sáng')) {
-                                    isWfhMorning = true;
-                                }
-                                if (r.device_name && r.device_name.toLowerCase().includes('wfh buổi sáng')) {
-                                    isWfhMorning = true;
-                                }
-                                if (r.adjustment_note && r.adjustment_note.toLowerCase().includes('wfh buổi chiều')) {
-                                    isWfhAfternoon = true;
-                                }
-                                if (r.device_name && r.device_name.toLowerCase().includes('wfh buổi chiều')) {
-                                    isWfhAfternoon = true;
-                                }
-                            });
 
                             const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning, isWfhAfternoon);
 
@@ -2084,13 +2084,18 @@ timer = setTimeout(loadData, 300);
                                 lateStr = 'Đúng giờ (WFH)';
                                 earlyStr = 'Đúng giờ (WFH)';
                                 workHoursNum = 7.5;
+                            } else if (holidayType === 'KL') {
+                                ratingStr = 'Nghỉ không lương';
+                                lateStr = 'Nghỉ không lương';
+                                earlyStr = 'Nghỉ không lương';
+                                workHoursNum = 0.0;
                             }
 
                             // Calculate violation index and penalty for this day
                             let violationIdx = 0;
                             let violationPen = "";
 
-                            if (holidayType !== 'P' && holidayType !== 'H') {
+                            if (holidayType !== 'P' && holidayType !== 'H' && holidayType !== 'KL') {
                                 const hasViolation = analysis.isLate || (analysis.isEarlyLeave && !analysis.isMissingCheckout);
                                 
                                 // Parse dateStr to check if it's on or after 2026-08-01
