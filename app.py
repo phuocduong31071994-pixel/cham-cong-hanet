@@ -391,9 +391,11 @@ def lark_webhook():
         # 3. Handle official Lark Approval Events (if APP_ID is configured)
         event = data.get("event", {})
         header = data.get("header", {})
-        event_type = header.get("event_type") or data.get("event_type")
+        event_type = header.get("event_type") or data.get("event_type") or event.get("type") or data.get("type")
+        
+        logging.info(f"Detected event_type: {event_type}")
 
-        if event_type == "approval.instance.updated":
+        if event_type and ("approval.instance.updated" in str(event_type) or "approval.instance.status_updated" in str(event_type) or "approval" in str(event_type).lower()):
             instance_code = event.get("instance_code") or data.get("instance_code")
             status = event.get("status") or data.get("status")
             
