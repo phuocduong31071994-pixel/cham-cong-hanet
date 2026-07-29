@@ -1917,29 +1917,6 @@ def admin_export_timesheet():
         logging.error(f"Error exporting timesheet matrix: {str(e)}")
         return jsonify({"status": "error", "message": f"Export failed: {str(e)}"}), 500
 
-@app.route('/api/debug-db')
-def debug_db():
-    try:
-        raw_url = os.getenv('DATABASE_URL', 'Not set')
-        masked_url = raw_url
-        if '@' in raw_url:
-            parts = raw_url.split('@')
-            left = parts[0].split(':')
-            if len(left) > 2:
-                masked_url = f"{left[0]}:{left[1]}:***@{parts[1]}"
-        
-        from sqlalchemy import text
-        result = db.session.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'employee'"))
-        columns = [row[0] for row in result]
-        
-        return jsonify({
-            "database_url": masked_url,
-            "columns": columns,
-            "employee_count": Employee.query.count()
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)})
-
 # Admin Force Sync Employees Endpoint
 @app.route('/api/admin/employees/sync', methods=['POST'])
 def admin_sync_employees():
