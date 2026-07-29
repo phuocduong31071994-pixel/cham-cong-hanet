@@ -1993,7 +1993,7 @@ def admin_sync_lark_approvals():
         }
         
         query_res = requests.post(query_url, headers=headers, json=payload, timeout=10)
-        instances = query_res.json().get("data", {}).get("instance_list", [])
+        return jsonify(query_res.json()), 200
         
         synced_count = 0
         synced_items = []
