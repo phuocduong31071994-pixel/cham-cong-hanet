@@ -142,6 +142,17 @@
                             </svg>
                             Xuất Excel
                         </button>
+                        <!-- Export Monthly Matrix Excel button -->
+                        <button class="btn-refresh hidden" id="export-matrix-btn" style="background: rgba(249, 115, 22, 0.1); border: 1px solid rgba(249, 115, 22, 0.25); color: #f97316;" title="Xuất Bảng Công Tháng (dạng lưới matrix)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 1rem; height: 1rem;">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                <line x1="9" y1="3" x2="9" y2="21"></line>
+                                <line x1="15" y1="3" x2="15" y2="21"></line>
+                                <line x1="3" y1="9" x2="21" y2="9"></line>
+                                <line x1="3" y1="15" x2="21" y2="15"></line>
+                            </svg>
+                            Bảng công tháng (Matrix)
+                        </button>
                     </div>
                 </div>
 
@@ -557,6 +568,50 @@
         </div>
     </div>
 
+    <!-- Admin Employee Edit Modal -->
+    <div class="modal-overlay" id="employee-edit-modal">
+        <div class="modal-dialog">
+            <div class="modal-header">
+                <h2>Cập Nhật Thông Tin Nhân Sự</h2>
+                <button class="modal-close" id="employee-edit-modal-close" aria-label="Đóng">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-emp-person-id">
+                <div class="form-group">
+                    <label for="edit-emp-name">Họ và tên</label>
+                    <input type="text" id="edit-emp-name" placeholder="Ví dụ: Nguyễn Văn A">
+                </div>
+                <div class="form-group">
+                    <label for="edit-emp-alias-id">Mã Code (Alias ID)</label>
+                    <input type="text" id="edit-emp-alias-id" placeholder="Ví dụ: C44, C13...">
+                </div>
+                <div class="form-group">
+                    <label for="edit-emp-join-date">Ngày vào làm</label>
+                    <input type="text" id="edit-emp-join-date" placeholder="Ví dụ: 1/1/2021 hoặc 10/27/2022">
+                </div>
+                <div class="form-group">
+                    <label for="edit-emp-position">Chức vụ</label>
+                    <input type="text" id="edit-emp-position" placeholder="Ví dụ: BD & Partnership executive">
+                </div>
+                <div class="form-group">
+                    <label for="edit-emp-standard-days">Số ngày công tiêu chuẩn mặc định</label>
+                    <input type="number" step="0.5" id="edit-emp-standard-days" placeholder="Để trống tự tính theo ngày thường (T2-T6)">
+                </div>
+                <div class="form-group">
+                    <label for="edit-emp-pin">Mã PIN chấm công (6 chữ số)</label>
+                    <input type="password" id="edit-emp-pin" placeholder="Bỏ trống nếu không đổi hoặc giữ nguyên" maxlength="6" pattern="[0-9]*" inputmode="numeric" oninput="this.value = this.value.replace(/\D/g, '')">
+                </div>
+                <div class="modal-error hidden" id="edit-emp-error-msg"></div>
+                <button class="btn-submit" id="edit-emp-submit-btn" onclick="saveEmployeeDetails()">Lưu thông tin</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Flatpickr JS -->
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
@@ -572,6 +627,7 @@
             const dateToInput = document.getElementById('date-to');
             const refreshBtn = document.getElementById('refresh-btn');
             const exportBtn = document.getElementById('export-btn');
+            const exportMatrixBtn = document.getElementById('export-matrix-btn');
             const themeToggleBtn = document.getElementById('theme-toggle-btn');
             const feedContainer = document.getElementById('feed-container');
             const feedLoading = document.getElementById('feed-loading');
@@ -896,6 +952,7 @@
                     if (isUserAdmin) {
                         // Admin Logged In
                         if (exportBtn) exportBtn.classList.remove('hidden'); // Show export for Admin only
+                        if (exportMatrixBtn) exportMatrixBtn.classList.remove('hidden');
                         analyticsSection.classList.remove('hidden'); // Show analytics for Admin only
                         if (empChangePinBtn) empChangePinBtn.classList.add('hidden');
                         const roleLabel = adminRole === 'ceo' ? 'CEO' : 'Admin';
@@ -917,6 +974,7 @@
                     } else {
                         // Employee Logged In
                         if (exportBtn) exportBtn.classList.add('hidden'); // Hide export for Employee
+                        if (exportMatrixBtn) exportMatrixBtn.classList.add('hidden');
                         analyticsSection.classList.add('hidden'); // Hide analytics for Employee
                         if (empChangePinBtn) empChangePinBtn.classList.remove('hidden');
                         adminLoginBtn.innerHTML = `
@@ -935,6 +993,7 @@
                     }
                 } else {
                     if (exportBtn) exportBtn.classList.add('hidden'); // Hide export for Public
+                    if (exportMatrixBtn) exportMatrixBtn.classList.add('hidden');
                     analyticsSection.classList.add('hidden'); // Hide analytics for Public
                     if (empChangePinBtn) empChangePinBtn.classList.add('hidden');
                     
@@ -982,16 +1041,22 @@
                 employees.forEach(emp => {
                     const hasPin = emp.pin && emp.pin.length === 6;
                     const tr = document.createElement('tr');
+                    
+                    const pinStatusHtml = hasPin 
+                        ? `<span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 2rem; font-weight: 600;">Đã thiết lập</span>`
+                        : `<span style="background: rgba(107, 114, 128, 0.1); border: 1px solid rgba(107, 114, 128, 0.25); color: #6b7280; font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 2rem; font-weight: 600;">Chưa thiết lập</span>`;
+                        
                     tr.innerHTML = `
                         <td style="padding: 0.75rem 0.25rem;">
                             <div style="font-weight: 600; color: var(--text-primary);">${escapeHtml(emp.name)}</div>
                             <div style="font-size: 0.72rem; color: var(--text-muted);">Mã: ${escapeHtml(emp.alias_id || emp.person_id)}</div>
+                            ${emp.position ? `<div style="font-size: 0.72rem; color: var(--accent-color); margin-top: 0.1rem;">${escapeHtml(emp.position)}</div>` : ''}
                         </td>
                         <td style="padding: 0.75rem 0.25rem; vertical-align: middle;">
-                            <input type="password" class="pin-input" id="pin-${emp.person_id}" value="${escapeHtml(emp.pin || '')}" placeholder="Chưa đặt" maxlength="6" pattern="[0-9]*" inputmode="numeric" oninput="this.value = this.value.replace(/\\D/g, '')" disabled style="width: 75px; text-align: center; padding: 0.25rem 0.5rem; font-size: 0.85rem; border-radius: 0.35rem; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-primary);">
+                            ${pinStatusHtml}
                         </td>
                         <td style="padding: 0.75rem 0.25rem; text-align: right; vertical-align: middle; white-space: nowrap;">
-                            <button class="btn-save-pin" id="btn-${emp.person_id}" onclick="togglePinEdit('${emp.person_id}')" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">Sửa</button>
+                            <button class="btn-save-pin" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="openEmployeeEditModal('${emp.person_id}', '${escapeHtml(emp.name)}', '${escapeHtml(emp.alias_id || '')}', '${escapeHtml(emp.join_date || '')}', '${escapeHtml(emp.position || '')}', ${emp.standard_days !== null && emp.standard_days !== undefined ? emp.standard_days : 'null'})">Sửa</button>
                             ${hasPin 
                                 ? `<button class="btn-save-pin" style="padding: 0.25rem 0.6rem; font-size: 0.75rem; background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 2px 6px rgba(239, 68, 68, 0.25); margin-left: 4px;" onclick="resetEmployeePin('${emp.person_id}', '${escapeHtml(emp.name)}')">Reset</button>` 
                                 : ''
@@ -1002,46 +1067,95 @@
                 });
             };
 
-            window.togglePinEdit = async (personId) => {
-                const pinInput = document.getElementById(`pin-${personId}`);
-                const btn = document.getElementById(`btn-${personId}`);
-                if (!pinInput || !btn) return;
+            const employeeEditModal = document.getElementById('employee-edit-modal');
+            const employeeEditModalClose = document.getElementById('employee-edit-modal-close');
+            if (employeeEditModalClose) {
+                employeeEditModalClose.addEventListener('click', () => {
+                    employeeEditModal.classList.remove('active');
+                });
+            }
+
+            window.openEmployeeEditModal = (personId, name, aliasId, joinDate, position, standardDays) => {
+                document.getElementById('edit-emp-person-id').value = personId;
+                document.getElementById('edit-emp-name').value = name;
+                document.getElementById('edit-emp-alias-id').value = aliasId;
+                document.getElementById('edit-emp-join-date').value = joinDate;
+                document.getElementById('edit-emp-position').value = position;
+                document.getElementById('edit-emp-standard-days').value = standardDays !== null ? standardDays : '';
+                document.getElementById('edit-emp-pin').value = ''; // Always empty by default
+                document.getElementById('edit-emp-error-msg').classList.add('hidden');
+                employeeEditModal.classList.add('active');
+            };
+
+            window.saveEmployeeDetails = async () => {
+                const errorMsg = document.getElementById('edit-emp-error-msg');
+                errorMsg.classList.add('hidden');
                 
-                if (pinInput.disabled) {
-                    // Clicked "Sửa": unlock input, reveal PIN
-                    pinInput.disabled = false;
-                    pinInput.type = "text";
-                    pinInput.focus();
-                    btn.innerText = "Lưu";
-                    btn.style.background = "linear-gradient(135deg, #10b981, #059669)"; // Make it green for saving
-                } else {
-                    // Clicked "Lưu": save to database
-                    const pin = pinInput.value.trim();
-                    if (pin !== "" && !/^\d{6}$/.test(pin)) {
-                        alert("Mã PIN phải gồm đúng 6 chữ số (0-9) hoặc để trống!");
-                        return;
+                const personId = document.getElementById('edit-emp-person-id').value;
+                const name = document.getElementById('edit-emp-name').value.trim();
+                const aliasId = document.getElementById('edit-emp-alias-id').value.trim();
+                const joinDate = document.getElementById('edit-emp-join-date').value.trim();
+                const position = document.getElementById('edit-emp-position').value.trim();
+                const standardDaysVal = document.getElementById('edit-emp-standard-days').value.trim();
+                const pin = document.getElementById('edit-emp-pin').value.trim();
+
+                if (!name) {
+                    errorMsg.innerText = "Họ và tên không được để trống!";
+                    errorMsg.classList.remove('hidden');
+                    return;
+                }
+
+                if (pin !== "" && !/^\d{6}$/.test(pin)) {
+                    errorMsg.innerText = "Mã PIN phải gồm đúng 6 chữ số (0-9)!";
+                    errorMsg.classList.remove('hidden');
+                    return;
+                }
+
+                const submitBtn = document.getElementById('edit-emp-submit-btn');
+                submitBtn.disabled = true;
+                submitBtn.innerText = "Đang lưu...";
+
+                try {
+                    // 1. Update Employee general details
+                    const updateRes = await fetch('/api/admin/employees/update', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            person_id: personId,
+                            name,
+                            alias_id: aliasId,
+                            join_date: joinDate,
+                            position,
+                            standard_days: standardDaysVal
+                        })
+                    });
+                    const updateJson = await updateRes.json();
+                    if (!updateRes.ok || updateJson.status !== 'success') {
+                        throw new Error(updateJson.message || "Lỗi cập nhật thông tin nhân viên");
                     }
-                    try {
-                        const response = await fetch('/api/admin/employees/pin', {
+
+                    // 2. Update PIN if entered
+                    if (pin !== "") {
+                        const pinRes = await fetch('/api/admin/employees/pin', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ person_id: personId, pin })
                         });
-                        const json = await response.json();
-                        if (response.ok && json.status === 'success') {
-                            pinInput.disabled = true;
-                            pinInput.type = "password";
-                            btn.innerText = "Sửa";
-                            btn.style.background = ""; // Reset style
-                            alert(`Đã lưu Mã PIN cho nhân sự thành công!`);
-                            loadAdminEmployees();
-                        } else {
-                            alert(json.message || "Lỗi khi lưu Mã PIN");
+                        const pinJson = await pinRes.json();
+                        if (!pinRes.ok || pinJson.status !== 'success') {
+                            throw new Error(pinJson.message || "Lỗi thiết lập mã PIN");
                         }
-                    } catch (e) {
-                        console.error("Error saving PIN:", e);
-                        alert("Lỗi kết nối máy chủ khi lưu PIN");
                     }
+
+                    employeeEditModal.classList.remove('active');
+                    alert("Cập nhật thông tin nhân sự thành công!");
+                    loadAdminEmployees();
+                } catch (e) {
+                    errorMsg.innerText = e.message || "Lỗi kết nối máy chủ";
+                    errorMsg.classList.remove('hidden');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerText = "Lưu thông tin";
                 }
             };
 
@@ -2249,6 +2363,23 @@ timer = setTimeout(loadData, 300);
             };
 
             if (exportBtn) exportBtn.addEventListener('click', handleExport);
+
+            const handleExportMatrix = () => {
+                const fromVal = dateFromInput.value.trim();
+                if (!fromVal) {
+                    alert("Vui lòng chọn ngày để xác định tháng xuất báo cáo!");
+                    return;
+                }
+                const parts = fromVal.split('/');
+                if (parts.length < 3) {
+                    alert("Ngày không hợp lệ!");
+                    return;
+                }
+                const monthParam = `${parts[2]}-${parts[1]}`; // YYYY-MM
+                window.location.href = `/api/admin/export-timesheet?month=${monthParam}`;
+            };
+
+            if (exportMatrixBtn) exportMatrixBtn.addEventListener('click', handleExportMatrix);
 
             // --- Attendance Correction Requests JavaScript Logic ---
 

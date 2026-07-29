@@ -3,7 +3,7 @@ import threading
 import time
 from datetime import datetime, date, timezone, timedelta
 import logging
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, send_file
 from flask_sqlalchemy import SQLAlchemy
 import requests
 
@@ -119,6 +119,9 @@ class Employee(db.Model):
     alias_id = db.Column(db.String(100), nullable=True)
     pin = db.Column(db.String(50), nullable=True)
     avatar_url = db.Column(db.Text, nullable=True)
+    join_date = db.Column(db.String(100), nullable=True)
+    position = db.Column(db.String(200), nullable=True)
+    standard_days = db.Column(db.Numeric(4, 1), nullable=True)
 
     def to_dict(self):
         return {
@@ -126,7 +129,10 @@ class Employee(db.Model):
             "name": self.name,
             "alias_id": self.alias_id,
             "pin": self.pin,
-            "avatar_url": self.avatar_url
+            "avatar_url": self.avatar_url,
+            "join_date": self.join_date,
+            "position": self.position,
+            "standard_days": float(self.standard_days) if self.standard_days is not None else None
         }
 
 class AttendanceRequest(db.Model):
@@ -1584,6 +1590,331 @@ def admin_reset_employee_pin():
         return jsonify({"status": "success", "message": "Đã reset mã PIN thành công!"}), 200
         
     return jsonify({"status": "error", "message": "Không tìm thấy nhân sự"}), 404
+
+# Admin Update Employee Details Endpoint
+@app.route('/api/admin/employees/update', methods=['POST'])
+def admin_update_employee():
+    if not session.get('is_admin', False):
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+    
+    data = request.json or {}
+    person_id = data.get('person_id')
+    name = data.get('name')
+    alias_id = data.get('alias_id')
+    join_date = data.get('join_date')
+    position = data.get('position')
+    standard_days = data.get('standard_days')
+    
+    if not person_id:
+        return jsonify({"status": "error", "message": "Missing person_id"}), 400
+        
+    emp = Employee.query.filter_by(person_id=person_id).first()
+    if emp:
+        if name is not None:
+            emp.name = name.strip()
+        if alias_id is not None:
+            emp.alias_id = alias_id.strip() or None
+        if join_date is not None:
+            emp.join_date = join_date.strip() or None
+        if position is not None:
+            emp.position = position.strip() or None
+        if standard_days is not None:
+            try:
+                emp.standard_days = float(standard_days) if str(standard_days).strip() != "" else None
+            except ValueError:
+                return jsonify({"status": "error", "message": "Số ngày công tiêu chuẩn không hợp lệ (phải là số)!"}), 400
+            
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Cập nhật thông tin nhân sự thành công!", "data": emp.to_dict()}), 200
+        
+    return jsonify({"status": "error", "message": "Không tìm thấy nhân sự"}), 404
+
+    return jsonify({"status": "error", "message": "Không tìm thấy nhân sự"}), 404
+
+# Admin Monthly Timesheet Matrix Excel Export Endpoint
+@app.route('/api/admin/export-timesheet', methods=['GET'])
+def admin_export_timesheet():
+    if not session.get('is_admin', False):
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+        
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        from io import BytesIO
+        import calendar
+        from datetime import date, datetime, timedelta
+        
+        month_str = request.args.get('month') # 'YYYY-MM'
+        if not month_str:
+            month_str = datetime.now().strftime('%Y-%m')
+            
+        parts = month_str.split('-')
+        year = int(parts[0])
+        month = int(parts[1])
+        
+        num_days = calendar.monthrange(year, month)[1]
+        
+        # 1. Fetch active employees
+        employees = Employee.query.all()
+        employees = sorted(employees, key=lambda e: e.name)
+        
+        # 2. Fetch adjustments and checkins
+        start_date = f"{month_str}-01"
+        end_date = f"{month_str}-{num_days}"
+        
+        adjustments = AttendanceAdjustment.query.filter(
+            AttendanceAdjustment.date >= start_date,
+            AttendanceAdjustment.date <= end_date
+        ).all()
+        
+        adj_map = {}
+        for adj in adjustments:
+            adj_map[(adj.person_id, adj.date)] = adj.adjustment_type
+            
+        # 3. Create Excel Workbook
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = f"Bảng công {month_str}"
+        ws.views.sheetView[0].showGridLines = True
+        
+        # Style variables
+        font_header = Font(name='Arial', size=9, bold=True)
+        font_body = Font(name='Arial', size=9)
+        font_total = Font(name='Arial', size=9, bold=True)
+        
+        align_center = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        align_left = Alignment(horizontal='left', vertical='center')
+        
+        fill_header = PatternFill(start_color='FFE5CC', end_color='FFE5CC', fill_type='solid') # Salmon/Peach
+        fill_weekend = PatternFill(start_color='F0AB6C', end_color='F0AB6C', fill_type='solid') # Orange
+        fill_p = PatternFill(start_color='FFE599', end_color='FFE599', fill_type='solid') # Yellow
+        fill_kl = PatternFill(start_color='FAD1D1', end_color='FAD1D1', fill_type='solid') # Pink
+        
+        border_side = Side(border_style='thin', color='A0A0A0')
+        border_thin = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
+        
+        # Helper to style a range of cells
+        def style_range(cell_range, font=None, alignment=None, fill=None, border=None):
+            for row in ws[cell_range]:
+                for cell in row:
+                    if font: cell.font = font
+                    if alignment: cell.alignment = alignment
+                    if fill: cell.fill = fill
+                    if border: cell.border = border
+                    
+        # Col Widths Setup
+        ws.column_dimensions['A'].width = 5
+        ws.column_dimensions['B'].width = 8
+        ws.column_dimensions['C'].width = 24
+        ws.column_dimensions['D'].width = 12
+        ws.column_dimensions['E'].width = 24
+        
+        for c in range(6, 6 + num_days):
+            col_letter = get_column_letter(c)
+            ws.column_dimensions[col_letter].width = 4.2
+            
+        # Summary Columns Indices
+        c_kl = 6 + num_days
+        c_p = c_kl + 1
+        c_tre = c_p + 1
+        c_luong = c_tre + 1
+        c_chuan = c_luong + 1
+        c_mcc = c_chuan + 1
+        
+        ws.column_dimensions[get_column_letter(c_kl)].width = 7
+        ws.column_dimensions[get_column_letter(c_p)].width = 7
+        ws.column_dimensions[get_column_letter(c_tre)].width = 10
+        ws.column_dimensions[get_column_letter(c_luong)].width = 12
+        ws.column_dimensions[get_column_letter(c_chuan)].width = 12
+        ws.column_dimensions[get_column_letter(c_mcc)].width = 8
+        
+        # Write Headers Row 1 and Row 2
+        ws.merge_cells('A1:A2')
+        ws['A1'] = "STT"
+        ws.merge_cells('B1:B2')
+        ws['B1'] = "MCC"
+        ws.merge_cells('C1:C2')
+        ws['C1'] = "Tên"
+        ws.merge_cells('D1:D2')
+        ws['D1'] = "Ngày vào"
+        ws.merge_cells('E1:E2')
+        ws['E1'] = "Chức vụ"
+        
+        # Dates Headers
+        weekdays_viet = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+        for d in range(1, num_days + 1):
+            col_idx = 5 + d
+            col_letter = get_column_letter(col_idx)
+            
+            # Row 1: Date number
+            ws.cell(row=1, column=col_idx, value=f"{d:02d}")
+            
+            # Row 2: Weekday
+            dt = date(year, month, d)
+            day_name = weekdays_viet[dt.weekday()]
+            ws.cell(row=2, column=col_idx, value=day_name)
+            
+            # Style weekend headers
+            if dt.weekday() >= 5: # Saturday/Sunday
+                ws.cell(row=1, column=col_idx).fill = fill_weekend
+                ws.cell(row=2, column=col_idx).fill = fill_weekend
+                
+        # Merged headers at the end
+        ws.merge_cells(start_row=1, start_column=c_kl, end_row=1, end_column=c_p)
+        ws.cell(row=1, column=c_kl, value="NGHỈ")
+        ws.cell(row=2, column=c_kl, value="KL")
+        ws.cell(row=2, column=c_p, value="P")
+        
+        ws.merge_cells(start_row=1, start_column=c_tre, end_row=2, end_column=c_tre)
+        ws.cell(row=1, column=c_tre, value="Đi trễ\n/\nVề sớm")
+        
+        ws.merge_cells(start_row=1, start_column=c_luong, end_row=2, end_column=c_luong)
+        ws.cell(row=1, column=c_luong, value="Công\ntính\nlương")
+        
+        ws.merge_cells(start_row=1, start_column=c_chuan, end_row=2, end_column=c_chuan)
+        ws.cell(row=1, column=c_chuan, value="Ngày\ncông\ntiêu\nchuẩn")
+        
+        ws.merge_cells(start_row=1, start_column=c_mcc, end_row=2, end_column=c_mcc)
+        ws.cell(row=1, column=c_mcc, value="MCC")
+        
+        # Apply header styling
+        style_range(f"A1:{get_column_letter(c_mcc)}2", font=font_header, alignment=align_center, fill=fill_header, border=border_thin)
+        
+        # Re-apply weekend fills to header cells because style_range fill might override them
+        for d in range(1, num_days + 1):
+            col_idx = 5 + d
+            dt = date(year, month, d)
+            if dt.weekday() >= 5:
+                ws.cell(row=1, column=col_idx).fill = fill_weekend
+                ws.cell(row=2, column=col_idx).fill = fill_weekend
+                
+        # Data Rows
+        row_num = 3
+        totals = {
+            "kl": 0.0,
+            "p": 0.0,
+            "luong": 0.0,
+            "chuan": 0.0
+        }
+        
+        for idx, emp in enumerate(employees, 1):
+            ws.cell(row=row_num, column=1, value=idx) # STT
+            ws.cell(row=row_num, column=2, value=emp.alias_id or '') # MCC
+            ws.cell(row=row_num, column=3, value=emp.name) # Tên
+            ws.cell(row=row_num, column=4, value=emp.join_date or '') # Ngày vào
+            ws.cell(row=row_num, column=5, value=emp.position or '') # Chức vụ
+            
+            # Align metadata
+            ws.cell(row=row_num, column=1).alignment = align_center
+            ws.cell(row=row_num, column=2).alignment = align_center
+            ws.cell(row=row_num, column=3).alignment = align_left
+            ws.cell(row=row_num, column=4).alignment = align_center
+            ws.cell(row=row_num, column=5).alignment = align_left
+            
+            # Calculate standard days for this employee
+            if emp.standard_days is not None:
+                std_days = float(emp.standard_days)
+            else:
+                # Default to number of weekdays in month
+                std_days = float(sum(1 for d in range(1, num_days + 1) if date(year, month, d).weekday() < 5))
+                
+            kl_days = 0.0
+            p_days = 0.0
+            
+            for d in range(1, num_days + 1):
+                col_idx = 5 + d
+                dt = date(year, month, d)
+                date_str = dt.strftime('%Y-%m-%d')
+                cell = ws.cell(row=row_num, column=col_idx)
+                
+                # Check for weekend fill
+                if dt.weekday() >= 5:
+                    cell.fill = fill_weekend
+                    
+                # Check adjustment
+                adj_type = adj_map.get((emp.person_id, date_str))
+                if adj_type:
+                    if adj_type == 'P':
+                        cell.value = 'P'
+                        cell.fill = fill_p
+                        p_days += 1.0
+                    elif adj_type == 'P/2':
+                        cell.value = 'P/2'
+                        cell.fill = fill_p
+                        p_days += 0.5
+                    elif adj_type == 'KL':
+                        cell.value = 'KL'
+                        cell.fill = fill_kl
+                        kl_days += 1.0
+                    elif adj_type == 'KL/2':
+                        cell.value = 'KL/2'
+                        cell.fill = fill_kl
+                        kl_days += 0.5
+                        
+                cell.alignment = align_center
+                cell.font = font_body
+                cell.border = border_thin
+                
+            # Summary columns
+            paid_work_days = std_days - kl_days
+            
+            c_kl_cell = ws.cell(row=row_num, column=c_kl, value=kl_days if kl_days > 0 else '-')
+            c_p_cell = ws.cell(row=row_num, column=c_p, value=p_days if p_days > 0 else '-')
+            c_tre_cell = ws.cell(row=row_num, column=c_tre, value='-')
+            c_luong_cell = ws.cell(row=row_num, column=c_luong, value=paid_work_days)
+            c_chuan_cell = ws.cell(row=row_num, column=c_chuan, value=std_days)
+            c_mcc_cell = ws.cell(row=row_num, column=c_mcc, value=emp.alias_id or '')
+            
+            # Align summaries
+            for cell in [c_kl_cell, c_p_cell, c_tre_cell, c_luong_cell, c_chuan_cell, c_mcc_cell]:
+                cell.alignment = align_center
+                cell.font = font_body
+                cell.border = border_thin
+                
+            totals["kl"] += kl_days
+            totals["p"] += p_days
+            totals["luong"] += paid_work_days
+            totals["chuan"] += std_days
+            
+            # Row border & style
+            for col in range(1, c_mcc + 1):
+                ws.cell(row=row_num, column=col).font = font_body
+                ws.cell(row=row_num, column=col).border = border_thin
+                
+            row_num += 1
+            
+        # Footer Row (TỔNG)
+        ws.merge_cells(start_row=row_num, start_column=1, end_row=row_num, end_column=5)
+        ws.cell(row=row_num, column=1, value="TỔNG").alignment = align_center
+        
+        # Style the entire footer row
+        style_range(f"A{row_num}:{get_column_letter(c_mcc)}{row_num}", font=font_total, alignment=align_center, fill=fill_header, border=border_thin)
+        
+        # Fill sums
+        ws.cell(row=row_num, column=c_kl, value=totals["kl"] if totals["kl"] > 0 else '-')
+        ws.cell(row=row_num, column=c_p, value=totals["p"] if totals["p"] > 0 else '-')
+        ws.cell(row=row_num, column=c_tre, value='-')
+        ws.cell(row=row_num, column=c_luong, value=totals["luong"])
+        ws.cell(row=row_num, column=c_chuan, value=totals["chuan"])
+        ws.cell(row=row_num, column=c_mcc, value='')
+        
+        # Save workbook to memory buffer
+        out = BytesIO()
+        wb.save(out)
+        out.seek(0)
+        
+        filename = f"Bang_cong_thang_{month_str}.xlsx"
+        return send_file(
+            out,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        logging.error(f"Error exporting timesheet matrix: {str(e)}")
+        return jsonify({"status": "error", "message": f"Export failed: {str(e)}"}), 500
 
 # Admin Force Sync Employees Endpoint
 @app.route('/api/admin/employees/sync', methods=['POST'])
