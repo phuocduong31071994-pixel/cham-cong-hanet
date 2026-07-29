@@ -1905,12 +1905,15 @@ def admin_export_timesheet():
         out.seek(0)
         
         filename = f"Bang_cong_thang_{month_str}.xlsx"
-        return send_file(
+        response = send_file(
             out,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
             download_name=filename
         )
+        response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+        response.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        return response
         
     except Exception as e:
         logging.error(f"Error exporting timesheet matrix: {str(e)}")

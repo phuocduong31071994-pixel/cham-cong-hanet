@@ -2392,7 +2392,13 @@ timer = setTimeout(loadData, 300);
                 }
                 
                 const monthParam = `${year}-${month}`; // YYYY-MM
-                window.location.href = `/api/admin/export-timesheet?month=${monthParam}`;
+                const downloadUrl = `/api/admin/export-timesheet?month=${monthParam}`;
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.setAttribute('download', `Bang_cong_thang_${monthParam}.xlsx`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
             };
 
             if (exportMatrixBtn) exportMatrixBtn.addEventListener('click', handleExportMatrix);
