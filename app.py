@@ -1629,13 +1629,11 @@ def admin_update_employee():
         
     return jsonify({"status": "error", "message": "Không tìm thấy nhân sự"}), 404
 
-    return jsonify({"status": "error", "message": "Không tìm thấy nhân sự"}), 404
-
 # Admin Monthly Timesheet Matrix Excel Export Endpoint
 @app.route('/api/admin/export-timesheet', methods=['GET'])
 def admin_export_timesheet():
-    # if not session.get('is_admin', False):
-    #     return jsonify({"status": "error", "message": "Unauthorized"}), 401
+    if not session.get('is_admin', False):
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
         
     try:
         import openpyxl
