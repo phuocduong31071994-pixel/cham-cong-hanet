@@ -248,6 +248,21 @@ def clear_db():
     except Exception as e:
         return f"Loi: {str(e)}", 500
 
+def parse_lark_date(date_str, timezone_offset_mins=0):
+    if not date_str:
+        return None
+    clean_str = date_str.replace("Z", "").replace("T", " ")
+    try:
+        dt = datetime.strptime(clean_str.split(".")[0], "%Y-%m-%d %H:%M:%S")
+        dt = dt - timedelta(minutes=timezone_offset_mins) # Subtract negative offset adds the offset
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        try:
+            dt = datetime.strptime(clean_str.split(" ")[0], "%Y-%m-%d")
+            return dt.strftime("%Y-%m-%d")
+        except Exception:
+            return date_str.split("T")[0].split(" ")[0]
+
 def process_lark_adjustment(employee_name, date_str, leave_type, note):
     if not employee_name:
         return False, "Employee name is empty"
@@ -448,31 +463,41 @@ def lark_webhook():
                             logging.info(f"Lark Approval Form Fields: {form_fields}")
                             
                             # Find start/end dates
-                            start_date_val = None
+                            start_date_raw = None
+                            interval_val = 1.0
+                            tz_offset = -420 # default UTC+7
                             leave_type_val = inst_data.get("approval_name") or "Leave/WFH"
                             
                             for f in form_fields:
                                 f_type = f.get("type")
                                 f_val = f.get("value")
                                 if f_type == "dateInterval" and isinstance(f_val, dict):
-                                    start_date_val = f_val.get("start", "").split(" ")[0]
+                                    start_date_raw = f_val.get("start")
+                                    interval_val = float(f_val.get("interval", 1.0))
+                                    tz_offset = int(f_val.get("timezoneOffset", -420))
                                 elif f_type == "date" and isinstance(f_val, str):
-                                    start_date_val = f_val.split(" ")[0]
+                                    start_date_raw = f_val
                                 elif f_type == "select" and isinstance(f_val, str):
                                     leave_type_val = f_val
                                     
-                            if not start_date_val:
+                            if not start_date_raw:
                                 start_time_epoch = inst_data.get("start_time")
                                 if start_time_epoch:
-                                    start_date_val = datetime.fromtimestamp(int(start_time_epoch)/1000).strftime("%Y-%m-%d")
+                                    start_date_raw = datetime.fromtimestamp(int(start_time_epoch)/1000).strftime("%Y-%m-%d")
                                     
-                            if start_date_val:
-                                process_lark_adjustment(
-                                    user_name,
-                                    start_date_val,
-                                    leave_type_val,
-                                    f"Lark duyệt: {inst_data.get('approval_name', 'Nghỉ phép')}"
-                                )
+                            if start_date_raw:
+                                start_date = parse_lark_date(start_date_raw, tz_offset)
+                                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                                num_days = max(1, int(interval_val))
+                                
+                                for i in range(num_days):
+                                    curr_date = (start_dt + timedelta(days=i)).strftime("%Y-%m-%d")
+                                    process_lark_adjustment(
+                                        user_name,
+                                        curr_date,
+                                        leave_type_val,
+                                        f"Lark duyệt: {inst_data.get('approval_name', 'Nghỉ phép')}"
+                                    )
                         except Exception as bg_err:
                             logging.error(f"Error in process_lark_approval_bg: {bg_err}")
                             
@@ -1916,6 +1941,137 @@ def admin_export_timesheet():
     except Exception as e:
         logging.error(f"Error exporting timesheet matrix: {str(e)}")
         return jsonify({"status": "error", "message": f"Export failed: {str(e)}"}), 500
+
+# Admin Force Sync Lark Approvals Endpoint
+@app.route('/api/admin/sync-lark-approvals', methods=['POST'])
+def admin_sync_lark_approvals():
+    if not session.get('is_admin', False):
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+        
+    lark_app_id = os.getenv("LARK_APP_ID")
+    lark_app_secret = os.getenv("LARK_APP_SECRET")
+    
+    if not lark_app_id or not lark_app_secret:
+        return jsonify({"status": "error", "message": "Thông tin xác thực ứng dụng Lark (LARK_APP_ID, LARK_APP_SECRET) chưa được cấu hình trên Railway!"}), 400
+        
+    try:
+        import json
+        import calendar
+        
+        data = request.json or {}
+        month_str = data.get('month') # 'YYYY-MM'
+        if not month_str:
+            month_str = datetime.now().strftime('%Y-%m')
+            
+        parts = month_str.split('-')
+        year = int(parts[0])
+        month = int(parts[1])
+        num_days = calendar.monthrange(year, month)[1]
+        
+        # Start and end timestamps in milliseconds (UTC+7 aligned roughly to UTC for Lark query)
+        # 2026-07-01 00:00:00 UTC+7 is 1782844800000 ms epoch (UTC+7)
+        # We start query from 1 day before to 1 day after to catch timezone boundary overlaps
+        start_dt = datetime(year, month, 1) - timedelta(days=1)
+        end_dt = datetime(year, month, num_days, 23, 59, 59) + timedelta(days=1)
+        start_ms = str(int(start_dt.timestamp() * 1000))
+        end_ms = str(int(end_dt.timestamp() * 1000))
+        
+        # 1. Fetch Tenant Access Token
+        token_url = "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal"
+        tok_res = requests.post(token_url, json={"app_id": lark_app_id, "app_secret": lark_app_secret}, timeout=10)
+        tenant_token = tok_res.json().get("tenant_access_token")
+        if not tenant_token:
+            return jsonify({"status": "error", "message": "Không thể kết nối API Lark Suite để lấy Token"}), 500
+            
+        # 2. Query instances
+        query_url = "https://open.larksuite.com/open-apis/approval/v4/instances/query"
+        headers = {"Authorization": f"Bearer {tenant_token}", "Content-Type": "application/json"}
+        payload = {
+            "approval_code": "0E4F14E9-F5E3-4939-8DE8-8294872C5D4E",
+            "start_time": start_ms,
+            "end_time": end_ms
+        }
+        
+        query_res = requests.post(query_url, headers=headers, json=payload, timeout=10)
+        instances = query_res.json().get("data", {}).get("instance_list", [])
+        
+        synced_count = 0
+        synced_items = []
+        
+        for inst in instances:
+            if inst.get("status") != "APPROVED":
+                continue
+                
+            code = inst.get("instance_code")
+            
+            # Get instance details
+            inst_url = f"https://open.larksuite.com/open-apis/approval/v4/instances/{code}"
+            inst_res = requests.get(inst_url, headers=headers, timeout=10)
+            inst_details = inst_res.json().get("data", {})
+            
+            user_id = inst_details.get("user_id")
+            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}"
+            user_res = requests.get(user_url, headers=headers, timeout=10)
+            user_name = user_res.json().get("data", {}).get("user", {}).get("name")
+            
+            if not user_name:
+                continue
+                
+            form_fields = json.loads(inst_details.get("form", "[]"))
+            
+            start_date_raw = None
+            interval_val = 1.0
+            tz_offset = -420
+            leave_type_val = inst_details.get("approval_name") or "Leave/WFH"
+            
+            for f in form_fields:
+                f_type = f.get("type")
+                f_val = f.get("value")
+                if f_type == "dateInterval" and isinstance(f_val, dict):
+                    start_date_raw = f_val.get("start")
+                    interval_val = float(f_val.get("interval", 1.0))
+                    tz_offset = int(f_val.get("timezoneOffset", -420))
+                elif f_type == "date" and isinstance(f_val, str):
+                    start_date_raw = f_val
+                elif f_type == "select" and isinstance(f_val, str):
+                    leave_type_val = f_val
+                    
+            if not start_date_raw:
+                start_time_epoch = inst_details.get("start_time")
+                if start_time_epoch:
+                    start_date_raw = datetime.fromtimestamp(int(start_time_epoch)/1000).strftime("%Y-%m-%d")
+                    
+            if start_date_raw:
+                start_date = parse_lark_date(start_date_raw, tz_offset)
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                num_days = max(1, int(interval_val))
+                
+                # Check if curr_date is in the requested month
+                for i in range(num_days):
+                    curr_date_dt = start_dt + timedelta(days=i)
+                    curr_date = curr_date_dt.strftime("%Y-%m-%d")
+                    
+                    # Only apply if the date actually falls within the target YYYY-MM
+                    if curr_date.startswith(month_str):
+                        success, msg = process_lark_adjustment(
+                            user_name,
+                            curr_date,
+                            leave_type_val,
+                            f"Lark Sync: {inst_details.get('approval_name', 'Nghỉ phép')}"
+                        )
+                        if success:
+                            synced_count += 1
+                            synced_items.append(f"{user_name} ({curr_date})")
+                            
+        return jsonify({
+            "status": "success",
+            "message": f"Đồng bộ đơn phép thành công! Đã cập nhật {synced_count} ngày phép/WFH từ Lark.",
+            "synced_items": synced_items
+        }), 200
+        
+    except Exception as e:
+        logging.error(f"Error in sync-lark-approvals: {str(e)}")
+        return jsonify({"status": "error", "message": f"Sync failed: {str(e)}"}), 500
 
 # Admin Force Sync Employees Endpoint
 @app.route('/api/admin/employees/sync', methods=['POST'])

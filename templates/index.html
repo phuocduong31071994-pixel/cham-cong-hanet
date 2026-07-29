@@ -285,6 +285,12 @@
                                 </svg>
                                 Đồng bộ nhân viên Hanet
                             </button>
+                            <button id="admin-sync-lark-btn" class="btn-refresh" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.35rem; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.25); color: #3b82f6; cursor: pointer;" title="Đồng bộ lại toàn bộ đơn nghỉ phép từ Lark Suite của tháng được chọn">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.8rem; height: 0.8rem;">
+                                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 1 1 21.21 8H18"/>
+                                </svg>
+                                Đồng bộ phép Lark
+                            </button>
                             <button class="btn-refresh" id="admin-change-pw-btn" style="padding: 0.35rem 0.65rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.35rem;" title="Đổi mật khẩu Admin">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.8rem; height: 0.8rem;">
                                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
@@ -1317,6 +1323,67 @@
                     } finally {
                         adminSyncEmpBtn.disabled = false;
                         adminSyncEmpBtn.innerHTML = originalText;
+                    }
+                });
+            }
+
+            // Sync Lark approvals handler
+            const adminSyncLarkBtn = document.getElementById('admin-sync-lark-btn');
+            if (adminSyncLarkBtn) {
+                adminSyncLarkBtn.addEventListener('click', async () => {
+                    const fromVal = dateFromInput.value.trim();
+                    if (!fromVal) {
+                        alert("Vui lòng chọn ngày để xác định tháng cần đồng bộ!");
+                        return;
+                    }
+                    
+                    let year = "";
+                    let month = "";
+                    if (fromVal.includes('-')) {
+                        const parts = fromVal.split('-');
+                        year = parts[0];
+                        month = parts[1];
+                    } else if (fromVal.includes('/')) {
+                        const parts = fromVal.split('/');
+                        if (parts.length >= 3) {
+                            year = parts[2];
+                            month = parts[1];
+                        }
+                    }
+                    
+                    if (!year || !month || year.length !== 4 || month.length !== 2) {
+                        alert("Ngày không hợp lệ! Vui lòng chọn lại ngày.");
+                        return;
+                    }
+                    
+                    const monthParam = `${year}-${month}`;
+                    
+                    const originalText = adminSyncLarkBtn.innerHTML;
+                    adminSyncLarkBtn.disabled = true;
+                    adminSyncLarkBtn.innerHTML = `
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.8rem; height: 0.8rem; animation: spin 1s linear infinite;">
+                            <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 1 1 21.21 8H18"/>
+                        </svg>
+                        Đang đồng bộ phép...
+                    `;
+                    
+                    try {
+                        const response = await fetch('/api/admin/sync-lark-approvals', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ month: monthParam })
+                        });
+                        const json = await response.json();
+                        alert(json.message || "Kết quả đồng bộ.");
+                        if (response.ok && json.status === 'success') {
+                            loadData(); // reload feed
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        alert("Lỗi kết nối máy chủ khi đồng bộ đơn phép!");
+                    } finally {
+                        adminSyncLarkBtn.disabled = false;
+                        adminSyncLarkBtn.innerHTML = originalText;
                     }
                 });
             }
