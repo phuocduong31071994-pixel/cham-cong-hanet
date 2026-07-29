@@ -1945,8 +1945,8 @@ def admin_export_timesheet():
 # Admin Force Sync Lark Approvals Endpoint
 @app.route('/api/admin/sync-lark-approvals', methods=['POST'])
 def admin_sync_lark_approvals():
-    # if not session.get('is_admin', False):
-    #     return jsonify({"status": "error", "message": "Unauthorized"}), 401
+    if not session.get('is_admin', False):
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
         
     lark_app_id = os.getenv("LARK_APP_ID")
     lark_app_secret = os.getenv("LARK_APP_SECRET")
@@ -1993,7 +1993,7 @@ def admin_sync_lark_approvals():
         }
         
         query_res = requests.post(query_url, headers=headers, json=payload, timeout=10)
-        return jsonify(query_res.json()), 200
+        instances = query_res.json().get("data", {}).get("instance_list", [])
         
         synced_count = 0
         synced_items = []
