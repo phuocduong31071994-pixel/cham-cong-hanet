@@ -1756,7 +1756,9 @@
                                 holiday_type: '',
                                 violationIndex: record.violation_index || 0,
                                 violationPenalty: record.violation_penalty || '',
-                                adjustment_note: record.adjustment_note || ''
+                                is_adjusted: record.is_adjusted || false,
+                                adjustment_note: record.adjustment_note || '',
+                                device_name: record.device_name || ''
                             };
                         } else {
                             // Keep the longest/most complete name (e.g. "Dương Hồng Phước" > "Phước")
@@ -1767,6 +1769,15 @@
                             }
                             if (record.avatar_url && !grouped[key].avatar_url) {
                                 grouped[key].avatar_url = record.avatar_url;
+                            }
+                            if (record.is_adjusted) {
+                                grouped[key].is_adjusted = true;
+                                if (record.adjustment_note) {
+                                    grouped[key].adjustment_note = record.adjustment_note;
+                                }
+                            }
+                            if (record.device_name && !grouped[key].device_name) {
+                                grouped[key].device_name = record.device_name;
                             }
                         }
 

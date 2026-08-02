@@ -1074,6 +1074,8 @@ def get_checkins():
             v_info = violation_map.get((emp_key, date_str), (0, ''))
             d["violation_index"] = v_info[0]
             d["violation_penalty"] = v_info[1]
+            d["is_adjusted"] = getattr(r, 'is_adjusted', False)
+            d["adjustment_note"] = getattr(r, 'adjustment_note', '')
                     
             serialized_data.append(d)
 
