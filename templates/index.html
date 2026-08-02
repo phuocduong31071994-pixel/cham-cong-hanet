@@ -1845,19 +1845,23 @@
                                     </svg>
                                     Vắng mặt (Không chấm công)
                                 </span>
-                            `;
-                        } else if (analysis.isMissingCheckout) {
-                            badgesHtml += `
-                                <span style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <line x1="12" y1="8" x2="12" y2="12"></line>
-                                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                                    </svg>
-                                    Thiếu quét RA
+                                <span style="background: rgba(107, 114, 128, 0.1); border: 1px solid rgba(107, 114, 128, 0.25); color: #6b7280; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Công: 0
                                 </span>
                             `;
-                        }
+                        } else {
+                            if (analysis.isMissingCheckout) {
+                                badgesHtml += `
+                                    <span style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                                        </svg>
+                                        Thiếu quét RA
+                                    </span>
+                                `;
+                            }
                         
                         if (analysis.isLate) {
                             if (analysis.isExcusedLate) {
@@ -1994,6 +1998,8 @@
                             `;
                         }
 
+                        }
+                        
                         // Override badges if it is Leave (P) or WFH (H)
                         if (group.holiday_type === 'P') {
                             badgesHtml = `
