@@ -756,13 +756,9 @@
                 }
 
                 if (isExcusedLate) {
-                    isLate = false;
-                    lateMinutes = 0;
                     requireLarkLateApproval = false;
                 }
                 if (isExcusedEarly) {
-                    isEarlyLeave = false;
-                    earlyLeaveMinutes = 0;
                     requireLarkEarlyApproval = false;
                 }
 
@@ -847,13 +843,9 @@
                 }
 
                 if (isExcusedLate) {
-                    isLate = false;
-                    lateMinutes = 0;
                     requireLarkLateApproval = false;
                 }
                 if (isExcusedEarly) {
-                    isEarlyLeave = false;
-                    earlyLeaveMinutes = 0;
                     requireLarkEarlyApproval = false;
                 }
 
@@ -869,7 +861,9 @@
                     requireLarkLateApproval,
                     requireLarkEarlyApproval,
                     T_in,
-                    T_out
+                    T_out,
+                    isExcusedLate,
+                    isExcusedEarly
                 };
             };
             
@@ -1866,15 +1860,27 @@
                         }
                         
                         if (analysis.isLate) {
-                            badgesHtml += `
-                                <span style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <polyline points="12 6 12 12 16 14"></polyline>
-                                    </svg>
-                                    Đi trễ (${analysis.lateMinutes} phút)
-                                </span>
-                            `;
+                            if (analysis.isExcusedLate) {
+                                badgesHtml += `
+                                    <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <polyline points="12 6 12 12 16 14"></polyline>
+                                        </svg>
+                                        Đi trễ (${analysis.lateMinutes} phút) - Đã xin phê duyệt qua Lark
+                                    </span>
+                                `;
+                            } else {
+                                badgesHtml += `
+                                    <span style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #ef4444; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <polyline points="12 6 12 12 16 14"></polyline>
+                                        </svg>
+                                        Đi trễ (${analysis.lateMinutes} phút)
+                                    </span>
+                                `;
+                            }
                         } else if (!analysis.isMissingCheckout) {
                             badgesHtml += `
                                 <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
@@ -1889,17 +1895,31 @@
 
                         if (!analysis.isMissingCheckout) {
                             if (analysis.isEarlyLeave) {
-                                badgesHtml += `
-                                    <span style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
-                                            <polyline points="22 9 17 4 12 9"></polyline>
-                                            <polyline points="2 15 7 20 12 15"></polyline>
-                                            <line x1="17" y1="4" x2="17" y2="20"></line>
-                                            <line x1="7" y1="4" x2="7" y2="20"></line>
-                                        </svg>
-                                        Về sớm (${analysis.earlyLeaveMinutes} phút)
-                                    </span>
-                                `;
+                                if (analysis.isExcusedEarly) {
+                                    badgesHtml += `
+                                        <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
+                                                <polyline points="22 9 17 4 12 9"></polyline>
+                                                <polyline points="2 15 7 20 12 15"></polyline>
+                                                <line x1="17" y1="4" x2="17" y2="20"></line>
+                                                <line x1="7" y1="4" x2="7" y2="20"></line>
+                                            </svg>
+                                            Về sớm (${analysis.earlyLeaveMinutes} phút) - Đã xin phê duyệt qua Lark
+                                        </span>
+                                    `;
+                                } else {
+                                    badgesHtml += `
+                                        <span style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #f59e0b; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 0.75rem; height: 0.75rem;">
+                                                <polyline points="22 9 17 4 12 9"></polyline>
+                                                <polyline points="2 15 7 20 12 15"></polyline>
+                                                <line x1="17" y1="4" x2="17" y2="20"></line>
+                                                <line x1="7" y1="4" x2="7" y2="20"></line>
+                                            </svg>
+                                            Về sớm (${analysis.earlyLeaveMinutes} phút)
+                                        </span>
+                                    `;
+                                }
                             }
 
                             if (analysis.isInsufficient) {
@@ -2278,9 +2298,13 @@ timer = setTimeout(loadData, 300);
 
                             let lateStr = "Đúng giờ";
                             if (analysis.isLate) {
-                                lateStr = `Đi trễ (${analysis.lateMinutes} phút)`;
-                                if (analysis.requireLarkLateApproval) {
-                                    lateStr += " (Trễ so với quy định, xin phê duyệt qua Lark)";
+                                if (analysis.isExcusedLate) {
+                                    lateStr = `Đi trễ (${analysis.lateMinutes} phút) - Đã xin phê duyệt qua Lark`;
+                                } else {
+                                    lateStr = `Đi trễ (${analysis.lateMinutes} phút)`;
+                                    if (analysis.requireLarkLateApproval) {
+                                        lateStr += " (Trễ so với quy định, xin phê duyệt qua Lark)";
+                                    }
                                 }
                             } else if (analysis.isMissingCheckout) {
                                 lateStr = "Thiếu quét RA";
@@ -2293,9 +2317,13 @@ timer = setTimeout(loadData, 300);
                             if (analysis.isMissingCheckout) {
                                 earlyStr = "Thiếu quét RA";
                             } else if (analysis.isEarlyLeave) {
-                                earlyStr = `Về sớm (${analysis.earlyLeaveMinutes} phút)`;
-                                if (analysis.requireLarkEarlyApproval) {
-                                    earlyStr += " (Sớm so với quy định, xin phê duyệt qua Lark)";
+                                if (analysis.isExcusedEarly) {
+                                    earlyStr = `Về sớm (${analysis.earlyLeaveMinutes} phút) - Đã xin phê duyệt qua Lark`;
+                                } else {
+                                    earlyStr = `Về sớm (${analysis.earlyLeaveMinutes} phút)`;
+                                    if (analysis.requireLarkEarlyApproval) {
+                                        earlyStr += " (Sớm so với quy định, xin phê duyệt qua Lark)";
+                                    }
                                 }
                             } else {
                                 earlyStr = "Đúng giờ";
@@ -2326,7 +2354,7 @@ timer = setTimeout(loadData, 300);
                             let violationPen = "";
 
                             if (holidayType !== 'P' && holidayType !== 'H' && holidayType !== 'KL') {
-                                const hasViolation = analysis.isLate || (analysis.isEarlyLeave && !analysis.isMissingCheckout);
+                                const hasViolation = (analysis.isLate && !analysis.isExcusedLate) || (analysis.isEarlyLeave && !analysis.isMissingCheckout && !analysis.isExcusedEarly);
                                 
                                 // Parse dateStr to check if it's on or after 2026-08-01
                                 const dateParts = dateStr.split('/');
