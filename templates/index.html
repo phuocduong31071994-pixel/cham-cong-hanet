@@ -734,6 +734,9 @@
                 let isLate = false;
                 let lateMinutes = 0;
                 let requireLarkLateApproval = false;
+                let isEarlyLeave = false;
+                let earlyLeaveMinutes = 0;
+                let requireLarkEarlyApproval = false;
                 
                 if (isWfhMorning) {
                     // Afternoon starts at 13:30 (810 mins). Late after 15 mins (13:45 = 825 mins)
@@ -787,9 +790,9 @@
                 
                 let workHours = 0;
                 let isInsufficient = false;
-                let isEarlyLeave = false;
-                let earlyLeaveMinutes = 0;
-                let requireLarkEarlyApproval = false;
+                isEarlyLeave = false;
+                earlyLeaveMinutes = 0;
+                requireLarkEarlyApproval = false;
                 let T_target_out = 0;
 
                 if (isWfhMorning) {
