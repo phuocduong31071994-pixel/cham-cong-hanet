@@ -695,7 +695,7 @@
                 return `${yyyy}-${mm}-${dd}`;
             };
 
-            const getAttendanceAnalysis = (checkInStr, checkOutStr, isWfhMorning = false, isWfhAfternoon = false) => {
+            const getAttendanceAnalysis = (checkInStr, checkOutStr, isWfhMorning = false, isWfhAfternoon = false, isExcusedLate = false, isExcusedEarly = false) => {
                 if (!checkInStr && !checkOutStr) {
                     return {
                         isAbsent: true,
@@ -750,6 +750,17 @@
                     isLate = T_in > 555;
                     lateMinutes = isLate ? Math.round(T_in - 555) : 0;
                     requireLarkLateApproval = T_in > 570;
+                }
+
+                if (isExcusedLate) {
+                    isLate = false;
+                    lateMinutes = 0;
+                    requireLarkLateApproval = false;
+                }
+                if (isExcusedEarly) {
+                    isEarlyLeave = false;
+                    earlyLeaveMinutes = 0;
+                    requireLarkEarlyApproval = false;
                 }
 
                 if (!checkOutStr) {
@@ -830,6 +841,17 @@
                     } else {
                         T_target_out = T_start + 450;
                     }
+                }
+
+                if (isExcusedLate) {
+                    isLate = false;
+                    lateMinutes = 0;
+                    requireLarkLateApproval = false;
+                }
+                if (isExcusedEarly) {
+                    isEarlyLeave = false;
+                    earlyLeaveMinutes = 0;
+                    requireLarkEarlyApproval = false;
                 }
 
                 return {
@@ -1797,7 +1819,12 @@
                         // Run work hour analysis
                         const isWfhMorning = (group.date === '20/07/2026') || (group.adjustment_note && group.adjustment_note.toLowerCase().includes('wfh buổi sáng')) || (group.device_name && group.device_name.toLowerCase().includes('wfh buổi sáng'));
                         const isWfhAfternoon = (group.adjustment_note && group.adjustment_note.toLowerCase().includes('wfh buổi chiều')) || (group.device_name && group.device_name.toLowerCase().includes('wfh buổi chiều'));
-                        const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning, isWfhAfternoon);
+                        
+                        const noteLower = ((group.adjustment_note || '') + ' ' + (group.device_name || '')).toLowerCase();
+                        const isExcusedLate = noteLower.includes('đi trễ') || noteLower.includes('đi muộn') || noteLower.includes('late') || noteLower.includes('muộn') || noteLower.includes('trễ') || noteLower.includes('excused');
+                        const isExcusedEarly = noteLower.includes('về sớm') || noteLower.includes('early') || noteLower.includes('excused');
+                        
+                        const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning, isWfhAfternoon, isExcusedLate, isExcusedEarly);
                         
                         let badgesHtml = '';
                         if (analysis.isAbsent) {
@@ -2225,7 +2252,15 @@ timer = setTimeout(loadData, 300);
                             const checkInTime = scans[0] || '';
                             const checkOutTime = scans.length > 1 ? scans[scans.length - 1] : '';
 
-                            const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning, isWfhAfternoon);
+                            let noteLower = '';
+                            dayScans.forEach(record => {
+                                noteLower += ' ' + (record.adjustment_note || '') + ' ' + (record.device_name || '');
+                            });
+                            noteLower = noteLower.toLowerCase();
+                            const isExcusedLate = noteLower.includes('đi trễ') || noteLower.includes('đi muộn') || noteLower.includes('late') || noteLower.includes('muộn') || noteLower.includes('trễ') || noteLower.includes('excused');
+                            const isExcusedEarly = noteLower.includes('về sớm') || noteLower.includes('early') || noteLower.includes('excused');
+
+                            const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning, isWfhAfternoon, isExcusedLate, isExcusedEarly);
 
                             let lateStr = "Đúng giờ";
                             if (analysis.isLate) {
