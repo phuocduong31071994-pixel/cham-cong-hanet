@@ -892,14 +892,14 @@ def get_checkins():
             adj = adj_map.get((r.person_id, date_str))
             if adj is None:
                 filtered_records.append(r)
-            elif adj.adjustment_type in ['wfh_am', 'wfh_pm']:
+            elif adj.adjustment_type in ['wfh_am', 'wfh_pm', 'late', 'tre', 'di_tre', 'di_muon']:
                 r.is_adjusted = True
-                r.adjustment_note = adj.note or ('WFH buổi sáng' if adj.adjustment_type == 'wfh_am' else 'WFH buổi chiều')
+                r.adjustment_note = adj.note or ('WFH buổi sáng' if adj.adjustment_type == 'wfh_am' else ('WFH buổi chiều' if adj.adjustment_type == 'wfh_pm' else 'Xin đi trễ/về sớm'))
                 filtered_records.append(r)
 
         # Append simulated scans for each adjustment
         for adj in adjustments:
-            if adj.adjustment_type in ['wfh_am', 'wfh_pm']:
+            if adj.adjustment_type in ['wfh_am', 'wfh_pm', 'late', 'tre', 'di_tre', 'di_muon']:
                 continue
             emp = Employee.query.filter_by(person_id=adj.person_id).first()
             emp_name = emp.name if emp else "Nhân viên"
@@ -1012,20 +1012,22 @@ def get_checkins():
                     check_in_time = day_scans[0].time
                     check_out_time = day_scans[-1].time if len(day_scans) > 1 else None
                     
-                    # Check if adjusted for WFH morning
+                    # Check if adjusted for WFH morning or excused late
                     is_wfh_morning = (date_str == '2026-07-20')
+                    is_excused_late = False
                     for s in day_scans:
                         note_str = getattr(s, 'adjustment_note', '') or ''
                         dev_str = getattr(s, 'device_name', '') or ''
+                        comb_str = (note_str + ' ' + dev_str).lower()
                         if note_str and 'wfh buổi sáng' in note_str.lower():
                             is_wfh_morning = True
-                            break
                         if dev_str and 'wfh buổi sáng' in dev_str.lower():
                             is_wfh_morning = True
-                            break
+                        if any(keyword in comb_str for keyword in ['đi trễ', 'đi muộn', 'đi muôn', 'muộn', 'trễ', 'late', 'excused']):
+                            is_excused_late = True
                             
                     t_in_mins = check_in_time.hour * 60 + check_in_time.minute + check_in_time.second / 60.0
-                    is_late = False if is_wfh_morning else (t_in_mins > 555) # after 9:15 AM
+                    is_late = False if (is_wfh_morning or is_excused_late) else (t_in_mins > 555) # after 9:15 AM
                     
                     is_early_leave = False
                     if check_out_time is not None:
@@ -1678,6 +1680,10 @@ def admin_export_timesheet():
         
         num_days = calendar.monthrange(year, month)[1]
         
+        # Get today's date in Vietnam timezone (UTC+7)
+        from datetime import timezone
+        vietnam_today = datetime.now(timezone(timedelta(hours=7))).date()
+        
         # 1. Fetch active employees
         employees = Employee.query.all()
         employees = sorted(employees, key=lambda e: e.name)
@@ -1694,6 +1700,20 @@ def admin_export_timesheet():
         adj_map = {}
         for adj in adjustments:
             adj_map[(adj.person_id, adj.date)] = adj.adjustment_type
+            
+        # Fetch check-ins for the month to identify missing days
+        start_dt_query = datetime(year, month, 1, 0, 0, 0)
+        end_dt_query = datetime(year, month, num_days, 23, 59, 59)
+        checkins = CheckIn.query.filter(
+            CheckIn.time >= start_dt_query,
+            CheckIn.time <= end_dt_query
+        ).all()
+        
+        checked_in_set = set()
+        for ci in checkins:
+            if ci.person_id:
+                ci_date_str = ci.time.strftime('%Y-%m-%d')
+                checked_in_set.add((ci.person_id, ci_date_str))
             
         # 3. Create Excel Workbook
         wb = openpyxl.Workbook()
@@ -1874,6 +1894,13 @@ def admin_export_timesheet():
                         cell.value = 'KL/2'
                         cell.fill = fill_kl
                         kl_days += 0.5
+                else:
+                    # If no adjustment and it is a past/current weekday, check if they checked in
+                    if dt.weekday() < 5 and dt <= vietnam_today:
+                        if (emp.person_id, date_str) not in checked_in_set:
+                            cell.value = 'KL'
+                            cell.fill = fill_kl
+                            kl_days += 1.0
                         
                 cell.alignment = align_center
                 cell.font = font_body
