@@ -1804,7 +1804,7 @@
 
                     let newHTML = '';
                     groupedList.forEach(group => {
-                        if (!group.scans || group.scans.length === 0) return;
+                        if (!group.scans) return;
                         
                         // Sort scans chronologically
                         group.scans.sort();
