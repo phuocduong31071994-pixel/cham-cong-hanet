@@ -1121,13 +1121,15 @@ def get_checkins():
         except Exception as ex:
             logging.error(f"Error generating dummy absent records: {ex}")
 
-        return jsonify({
+        resp = jsonify({
             "status": "success",
             "data": serialized_data,
             "stats": stats,
             "is_admin": is_admin,
             "valid_pin": valid_pin
         })
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        return resp
 
     except Exception as e:
         logging.error(f"Error fetching check-ins api: {str(e)}")

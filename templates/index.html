@@ -1657,7 +1657,7 @@
                 const toVal = dateToInput.value;
 
                 try {
-                    const response = await fetch(`/api/checkins?search=${encodeURIComponent(searchVal)}&start_date=${fromVal}&end_date=${toVal}`);
+                    const response = await fetch(`/api/checkins?search=${encodeURIComponent(searchVal)}&start_date=${fromVal}&end_date=${toVal}&_=${Date.now()}`);
                     const json = await response.json();
 
                     if (response.ok && json.status === 'success') {
