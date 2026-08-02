@@ -2303,40 +2303,51 @@ timer = setTimeout(loadData, 300);
                             const analysis = getAttendanceAnalysis(checkInTime, checkOutTime, isWfhMorning, isWfhAfternoon, isExcusedLate, isExcusedEarly);
 
                             let lateStr = "Đúng giờ";
-                            if (analysis.isLate) {
-                                if (analysis.isExcusedLate) {
-                                    lateStr = `Đi trễ (${analysis.lateMinutes} phút) - Đã xin phê duyệt qua Lark`;
-                                } else {
-                                    lateStr = `Đi trễ (${analysis.lateMinutes} phút)`;
+                            let earlyStr = "Đúng giờ";
+                            let ratingStr = "Đủ công";
+                            let workHoursNum = Number(analysis.workHours) || 0;
+
+                            if (analysis.isAbsent) {
+                                lateStr = "Vắng mặt";
+                                earlyStr = "Vắng mặt";
+                                ratingStr = "Vắng mặt";
+                                workHoursNum = 0.0;
+                            } else {
+                                if (analysis.isLate) {
+                                    if (analysis.isExcusedLate) {
+                                        lateStr = `Đi trễ (${analysis.lateMinutes} phút) - Đã xin phê duyệt qua Lark`;
+                                    } else {
+                                        lateStr = `Đi trễ (${analysis.lateMinutes} phút)`;
+                                        if (analysis.requireLarkLateApproval) {
+                                            lateStr += " (Trễ so với quy định, xin phê duyệt qua Lark)";
+                                        }
+                                    }
+                                } else if (analysis.isMissingCheckout) {
+                                    lateStr = "Thiếu quét RA";
                                     if (analysis.requireLarkLateApproval) {
                                         lateStr += " (Trễ so với quy định, xin phê duyệt qua Lark)";
                                     }
                                 }
-                            } else if (analysis.isMissingCheckout) {
-                                lateStr = "Thiếu quét RA";
-                                if (analysis.requireLarkLateApproval) {
-                                    lateStr += " (Trễ so với quy định, xin phê duyệt qua Lark)";
-                                }
-                            }
 
-                            let earlyStr = "--";
-                            if (analysis.isMissingCheckout) {
-                                earlyStr = "Thiếu quét RA";
-                            } else if (analysis.isEarlyLeave) {
-                                if (analysis.isExcusedEarly) {
-                                    earlyStr = `Về sớm (${analysis.earlyLeaveMinutes} phút) - Đã xin phê duyệt qua Lark`;
-                                } else {
-                                    earlyStr = `Về sớm (${analysis.earlyLeaveMinutes} phút)`;
-                                    if (analysis.requireLarkEarlyApproval) {
-                                        earlyStr += " (Sớm so với quy định, xin phê duyệt qua Lark)";
+                                earlyStr = "--";
+                                if (analysis.isMissingCheckout) {
+                                    earlyStr = "Thiếu quét RA";
+                                } else if (analysis.isEarlyLeave) {
+                                    if (analysis.isExcusedEarly) {
+                                        earlyStr = `Về sớm (${analysis.earlyLeaveMinutes} phút) - Đã xin phê duyệt qua Lark`;
+                                    } else {
+                                        earlyStr = `Về sớm (${analysis.earlyLeaveMinutes} phút)`;
+                                        if (analysis.requireLarkEarlyApproval) {
+                                            earlyStr += " (Sớm so với quy định, xin phê duyệt qua Lark)";
+                                        }
                                     }
+                                } else {
+                                    earlyStr = "Đúng giờ";
                                 }
-                            } else {
-                                earlyStr = "Đúng giờ";
-                            }
 
-                            let workHoursNum = analysis.isMissingCheckout ? 0.0 : Number(analysis.workHours);
-                            let ratingStr = analysis.isMissingCheckout ? "Thiếu quét RA" : (analysis.isInsufficient ? "Chưa đủ công" : "Đủ công");
+                                workHoursNum = analysis.isMissingCheckout ? 0.0 : Number(analysis.workHours);
+                                ratingStr = analysis.isMissingCheckout ? "Thiếu quét RA" : (analysis.isInsufficient ? "Chưa đủ công" : "Đủ công");
+                            }
 
                             if (holidayType === 'P') {
                                 ratingStr = 'Nghỉ phép';
