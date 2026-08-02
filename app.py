@@ -357,6 +357,11 @@ def process_lark_adjustment(employee_name, date_str, leave_type, note):
         adj_type = 'P'
         check_in = '09:00:00'
         check_out = '18:00:00'
+    elif 'trễ' in lt_lower or 'muộn' in lt_lower or 'sớm' in lt_lower or 'late' in lt_lower:
+        adj_type = 'late'
+        check_in = None
+        check_out = None
+        note = "Đi trễ/về sớm đã phê duyệt qua Lark" + (f" ({note})" if note else "")
     elif lt_lower in ['time', 'wfh_am', 'wfh_pm', 'p', 'h', 'kl']:
         adj_type = leave_type
         if adj_type in ['P', 'H', 'KL']:
