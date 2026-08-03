@@ -2035,143 +2035,115 @@ def admin_sync_lark_approvals():
         if not tenant_token:
             return jsonify({"status": "error", "message": "Không thể kết nối API Lark Suite để lấy Token"}), 500
             
-        # 2. Query approvals list to find all relevant flows (Leave, WFH, FwF, etc.)
-        approvals_url = "https://open.larksuite.com/open-apis/approval/v4/approvals?page_size=100"
+        # 2. Query instances for the main Leave/WFH Approval form directly
+        app_code = "0E4F14E9-F5E3-4939-8DE8-8294872C5D4E"
         headers = {"Authorization": f"Bearer {tenant_token}", "Content-Type": "application/json"}
-        app_res = requests.get(approvals_url, headers=headers, timeout=10)
-        app_json = app_res.json()
         
-        if app_json.get("code") != 0:
-            err_msg = app_json.get("msg", "")
-            if "permission_violations" in str(app_json) or "scope" in err_msg.lower() or app_json.get("code") == 99991672:
+        query_url = "https://open.larksuite.com/open-apis/approval/v4/instances/query"
+        payload = {
+            "approval_code": app_code,
+            "start_time": start_ms,
+            "end_time": end_ms
+        }
+        query_res = requests.post(query_url, headers=headers, json=payload, timeout=10)
+        q_json = query_res.json()
+        
+        if q_json.get("code") != 0:
+            err_msg = q_json.get("msg", "")
+            if "permission_violations" in str(q_json) or "scope" in err_msg.lower() or q_json.get("code") == 99991672:
                 return jsonify({
                     "status": "error", 
-                    "message": "Ứng dụng Lark của bạn chưa được cấp quyền 'approval:approval.list:readonly' (Xem danh sách định nghĩa đơn duyệt). Vui lòng vào Lark Developer Console -> Permission Administration, cấp quyền này cho ứng dụng và phát hành phiên bản mới để đồng bộ."
+                    "message": "Ứng dụng Lark của bạn chưa được cấp quyền 'approval:approval.list:readonly' (Xem danh sách đơn duyệt). Vui lòng vào Lark Developer Console -> Permission Administration, cấp quyền này cho ứng dụng và phát hành phiên bản mới để đồng bộ."
                 }), 400
-            return jsonify({"status": "error", "message": f"Lỗi truy vấn Lark approvals list: {err_msg}"}), 400
+            return jsonify({"status": "error", "message": f"Lỗi truy vấn đơn từ Lark: {err_msg}"}), 400
             
-        approval_list = app_json.get("data", {}).get("approval_list", [])
+        instances = q_json.get("data", {}).get("instance_list", [])
         
-        # Filter for relevant approvals
-        relevant_approvals = []
-        keywords = ["nghỉ", "phép", "leave", "wfh", "home", "trễ", "muộn", "sớm", "late", "early", "fwf", "flex", "free"]
-        for app_def in approval_list:
-            app_name = (app_def.get("approval_name") or "").lower()
-            if any(kw in app_name for kw in keywords):
-                relevant_approvals.append(app_def)
-                
-        # If no approvals found or listing empty, fallback to the default leave approval code
-        if not relevant_approvals:
-            relevant_approvals = [{"approval_code": "0E4F14E9-F5E3-4939-8DE8-8294872C5D4E", "approval_name": "Leave Application"}]
-            
         synced_count = 0
         synced_items = []
-        processed_instances = set()
         
-        # 3. Query instances for each relevant approval definition
-        for app_def in relevant_approvals:
-            app_code = app_def.get("approval_code")
-            app_name = app_def.get("approval_name")
-            logging.info(f"Syncing Lark approval flow: {app_name} ({app_code})")
-            
-            query_url = "https://open.larksuite.com/open-apis/approval/v4/instances/query"
-            payload = {
-                "approval_code": app_code,
-                "start_time": start_ms,
-                "end_time": end_ms
-            }
-            query_res = requests.post(query_url, headers=headers, json=payload, timeout=10)
-            q_json = query_res.json()
-            if q_json.get("code") != 0:
-                logging.error(f"Error querying instances for approval {app_name}: {q_json.get('msg')}")
+        for inst in instances:
+            if inst.get("status") != "APPROVED":
                 continue
                 
-            instances = q_json.get("data", {}).get("instance_list", [])
-            for inst in instances:
-                if inst.get("status") != "APPROVED":
-                    continue
-                    
-                code = inst.get("instance_code")
-                if code in processed_instances:
-                    continue
-                processed_instances.add(code)
+            code = inst.get("instance_code")
+            
+            # Get instance details
+            inst_url = f"https://open.larksuite.com/open-apis/approval/v4/instances/{code}"
+            inst_res = requests.get(inst_url, headers=headers, timeout=10)
+            inst_details = inst_res.json().get("data", {})
                 
-                # Get instance details
-                inst_url = f"https://open.larksuite.com/open-apis/approval/v4/instances/{code}"
-                inst_res = requests.get(inst_url, headers=headers, timeout=10)
-                inst_details = inst_res.json().get("data", {})
+            user_id = inst_details.get("user_id")
+            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}"
+            user_res = requests.get(user_url, headers=headers, timeout=10)
+            user_name = user_res.json().get("data", {}).get("user", {}).get("name")
+            
+            if not user_name:
+                continue
                 
-                user_id = inst_details.get("user_id")
-                user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}"
-                user_res = requests.get(user_url, headers=headers, timeout=10)
-                user_name = user_res.json().get("data", {}).get("user", {}).get("name")
-                
-                if not user_name:
-                    continue
-                    
-                form_fields = json.loads(inst_details.get("form", "[]"))
-                
-                start_date_raw = None
-                interval_val = 1.0
-                tz_offset = -420
-                leave_type_val = inst_details.get("approval_name") or "Leave/WFH"
-                
-                for f in form_fields:
-                    f_type = f.get("type")
-                    f_val = f.get("value")
-                    if f_type == "dateInterval" and isinstance(f_val, dict):
-                        start_date_raw = f_val.get("start")
-                        interval_val = float(f_val.get("interval", 1.0))
-                        tz_offset = int(f_val.get("timezoneOffset", -420))
-                    elif f_type == "date" and isinstance(f_val, str):
-                        start_date_raw = f_val
-                    elif f_type in ["select", "radio", "checkbox", "input", "widget"]:
-                        if isinstance(f_val, str):
-                            try:
-                                val_json = json.loads(f_val)
-                                if isinstance(val_json, dict) and "value" in val_json:
-                                    leave_type_val = val_json.get("value")
-                                elif isinstance(val_json, list) and len(val_json) > 0:
-                                    leave_type_val = val_json[0]
-                                else:
-                                    leave_type_val = f_val
-                            except:
-                                leave_type_val = f_val
-                        elif isinstance(f_val, dict):
-                            leave_type_val = f_val.get("value") or f_val.get("name") or str(f_val)
-                        elif isinstance(f_val, list) and len(f_val) > 0:
-                            first_val = f_val[0]
-                            if isinstance(first_val, dict):
-                                leave_type_val = first_val.get("value") or first_val.get("name") or str(first_val)
+            form_fields = json.loads(inst_details.get("form", "[]"))
+            
+            start_date_raw = None
+            interval_val = 1.0
+            tz_offset = -420
+            leave_type_val = inst_details.get("approval_name") or "Leave/WFH"
+            
+            for f in form_fields:
+                f_type = f.get("type")
+                f_val = f.get("value")
+                if f_type == "dateInterval" and isinstance(f_val, dict):
+                    start_date_raw = f_val.get("start")
+                    interval_val = float(f_val.get("interval", 1.0))
+                    tz_offset = int(f_val.get("timezoneOffset", -420))
+                elif f_type == "date" and isinstance(f_val, str):
+                    start_date_raw = f_val
+                elif f_type in ["select", "radio", "checkbox", "input", "widget"]:
+                    if isinstance(f_val, str):
+                        try:
+                            val_json = json.loads(f_val)
+                            if isinstance(val_json, dict) and "value" in val_json:
+                                leave_type_val = val_json.get("value")
+                            elif isinstance(val_json, list) and len(val_json) > 0:
+                                leave_type_val = val_json[0]
                             else:
-                                leave_type_val = str(first_val)
-                        
-                if not start_date_raw:
-                    start_time_epoch = inst_details.get("start_time")
-                    if start_time_epoch:
-                        start_date_raw = datetime.fromtimestamp(int(start_time_epoch)/1000).strftime("%Y-%m-%d")
-                        
-                if start_date_raw:
-                    start_date = parse_lark_date(start_date_raw, tz_offset)
-                    start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-                    num_days = max(1, int(interval_val))
+                                leave_type_val = f_val
+                        except:
+                            leave_type_val = f_val
+                    elif isinstance(f_val, dict):
+                        leave_type_val = f_val.get("value") or f_val.get("name") or str(f_val)
+                    elif isinstance(f_val, list) and len(f_val) > 0:
+                        first_val = f_val[0]
+                        if isinstance(first_val, dict):
+                            leave_type_val = first_val.get("value") or first_val.get("name") or str(first_val)
+                        else:
+                            leave_type_val = str(first_val)
                     
-                    # Check if curr_date is in the requested month
-                    for i in range(num_days):
-                        curr_date_dt = start_dt + timedelta(days=i)
-                        curr_date = curr_date_dt.strftime("%Y-%m-%d")
-                        
-                        # Only apply if the date actually falls within the target YYYY-MM
-                        if curr_date.startswith(month_str):
-                            success, msg = process_lark_adjustment(
-                                user_name,
-                                curr_date,
-                                leave_type_val,
-                                f"Lark Sync: {inst_details.get('approval_name', 'Nghỉ phép/WFH')}"
-                            )
-                            if success:
-                                synced_count += 1
-                                synced_items.append(f"{user_name} ({curr_date})")
+            if not start_date_raw:
+                start_time_epoch = inst_details.get("start_time")
+                if start_time_epoch:
+                    start_date_raw = datetime.fromtimestamp(int(start_time_epoch)/1000).strftime("%Y-%m-%d")
+                    
+            if start_date_raw:
+                start_date = parse_lark_date(start_date_raw, tz_offset)
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                num_days = max(1, int(interval_val))
+                
+                # Check if curr_date is in the requested month
+                for i in range(num_days):
+                    curr_date_dt = start_dt + timedelta(days=i)
+                    curr_date = curr_date_dt.strftime("%Y-%m-%d")
+                    
+                    # Only apply if the date actually falls within the target YYYY-MM
+                    if curr_date.startswith(month_str):
+                        success, msg = process_lark_adjustment(
+                            user_name,
+                            curr_date,
+                            leave_type_val,
+                            f"Lark Sync: {inst_details.get('approval_name', 'Nghỉ phép/WFH')}"
+                        )
+                        if success:
+                            synced_count += 1
+                            synced_items.append(f"{user_name} ({curr_date})")
                                 
         return jsonify({
             "status": "success",
