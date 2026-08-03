@@ -2018,18 +2018,11 @@ def admin_sync_lark_approvals():
         tenant_token = tok_res.json().get("tenant_access_token")
         if not tenant_token:
             return jsonify({"status": "error", "message": "Không thể kết nối API Lark Suite để lấy Token"}), 500
-            
-        # 2. Query instances
-        query_url = "https://open.larksuite.com/open-apis/approval/v4/instances/query"
+        # 2. Query approvals list
+        query_url = "https://open.larksuite.com/open-apis/approval/v4/approvals?page_size=100"
         headers = {"Authorization": f"Bearer {tenant_token}", "Content-Type": "application/json"}
-        payload = {
-            "approval_code": "0E4F14E9-F5E3-4939-8DE8-8294872C5D4E",
-            "start_time": start_ms,
-            "end_time": end_ms
-        }
-        
-        query_res = requests.post(query_url, headers=headers, json=payload, timeout=10)
-        instances = query_res.json().get("data", {}).get("instance_list", [])
+        query_res = requests.get(query_url, headers=headers, timeout=10)
+        return jsonify(query_res.json())
         
         synced_count = 0
         synced_items = []
