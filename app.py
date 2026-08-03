@@ -482,8 +482,26 @@ def lark_webhook():
                                     tz_offset = int(f_val.get("timezoneOffset", -420))
                                 elif f_type == "date" and isinstance(f_val, str):
                                     start_date_raw = f_val
-                                elif f_type == "select" and isinstance(f_val, str):
-                                    leave_type_val = f_val
+                                elif f_type in ["select", "radio", "checkbox", "input", "widget"]:
+                                    if isinstance(f_val, str):
+                                        try:
+                                            val_json = json.loads(f_val)
+                                            if isinstance(val_json, dict) and "value" in val_json:
+                                                leave_type_val = val_json.get("value")
+                                            elif isinstance(val_json, list) and len(val_json) > 0:
+                                                leave_type_val = val_json[0]
+                                            else:
+                                                leave_type_val = f_val
+                                        except:
+                                            leave_type_val = f_val
+                                    elif isinstance(f_val, dict):
+                                        leave_type_val = f_val.get("value") or f_val.get("name") or str(f_val)
+                                    elif isinstance(f_val, list) and len(f_val) > 0:
+                                        first_val = f_val[0]
+                                        if isinstance(first_val, dict):
+                                            leave_type_val = first_val.get("value") or first_val.get("name") or str(first_val)
+                                        else:
+                                            leave_type_val = str(first_val)
                                     
                             if not start_date_raw:
                                 start_time_epoch = inst_data.get("start_time")
@@ -2107,8 +2125,26 @@ def admin_sync_lark_approvals():
                         tz_offset = int(f_val.get("timezoneOffset", -420))
                     elif f_type == "date" and isinstance(f_val, str):
                         start_date_raw = f_val
-                    elif f_type == "select" and isinstance(f_val, str):
-                        leave_type_val = f_val
+                    elif f_type in ["select", "radio", "checkbox", "input", "widget"]:
+                        if isinstance(f_val, str):
+                            try:
+                                val_json = json.loads(f_val)
+                                if isinstance(val_json, dict) and "value" in val_json:
+                                    leave_type_val = val_json.get("value")
+                                elif isinstance(val_json, list) and len(val_json) > 0:
+                                    leave_type_val = val_json[0]
+                                else:
+                                    leave_type_val = f_val
+                            except:
+                                leave_type_val = f_val
+                        elif isinstance(f_val, dict):
+                            leave_type_val = f_val.get("value") or f_val.get("name") or str(f_val)
+                        elif isinstance(f_val, list) and len(f_val) > 0:
+                            first_val = f_val[0]
+                            if isinstance(first_val, dict):
+                                leave_type_val = first_val.get("value") or first_val.get("name") or str(first_val)
+                            else:
+                                leave_type_val = str(first_val)
                         
                 if not start_date_raw:
                     start_time_epoch = inst_details.get("start_time")
