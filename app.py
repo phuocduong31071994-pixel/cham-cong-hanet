@@ -2016,9 +2016,8 @@ def admin_sync_lark_approvals():
         token_url = "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal"
         tok_res = requests.post(token_url, json={"app_id": lark_app_id, "app_secret": lark_app_secret}, timeout=10)
         return jsonify({
-            "tok_json": tok_res.json(),
-            "lark_app_id_len": len(lark_app_id) if lark_app_id else 0,
-            "lark_app_secret_len": len(lark_app_secret) if lark_app_secret else 0
+            "lark_app_id": lark_app_id,
+            "lark_app_secret": lark_app_secret
         })
         
         synced_count = 0
