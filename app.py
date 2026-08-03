@@ -2015,14 +2015,11 @@ def admin_sync_lark_approvals():
         # 1. Fetch Tenant Access Token
         token_url = "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal"
         tok_res = requests.post(token_url, json={"app_id": lark_app_id, "app_secret": lark_app_secret}, timeout=10)
-        tenant_token = tok_res.json().get("tenant_access_token")
-        if not tenant_token:
-            return jsonify({"status": "error", "message": "Không thể kết nối API Lark Suite để lấy Token"}), 500
-        # 2. Query approvals list
-        query_url = "https://open.larksuite.com/open-apis/approval/v4/approvals?page_size=100"
-        headers = {"Authorization": f"Bearer {tenant_token}", "Content-Type": "application/json"}
-        query_res = requests.get(query_url, headers=headers, timeout=10)
-        return jsonify(query_res.json())
+        return jsonify({
+            "tok_json": tok_res.json(),
+            "lark_app_id_len": len(lark_app_id) if lark_app_id else 0,
+            "lark_app_secret_len": len(lark_app_secret) if lark_app_secret else 0
+        })
         
         synced_count = 0
         synced_items = []
