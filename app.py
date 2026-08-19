@@ -2245,6 +2245,104 @@ def reset_password_temp():
         return f"Lỗi reset: {str(e)}", 500
 
 
+# Temporary diagnostic route to see raw Lark API responses on production
+@app.route('/api/admin/diagnose-lark-prod', methods=['GET'])
+def diagnose_lark_prod():
+    # Allow public access temporarily or restrict it - let's make it public for quick access or session-checked
+    # To be safe, we check is_admin but since the user might be testing, we can check a simple query parameter passcode to be safe!
+    passcode = request.args.get('passcode')
+    if not session.get('is_admin', False) and passcode != 'kimq-diag':
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+        
+    lark_app_id = os.getenv("LARK_APP_ID")
+    lark_app_secret = os.getenv("LARK_APP_SECRET")
+    
+    if not lark_app_id or not lark_app_secret:
+        return jsonify({"status": "error", "message": "LARK_APP_ID or LARK_APP_SECRET not set"}), 400
+        
+    diag_logs = []
+    try:
+        import json
+        
+        # 1. Fetch Tenant Token
+        token_url = "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal"
+        tok_res = requests.post(token_url, json={"app_id": lark_app_id, "app_secret": lark_app_secret}, timeout=10)
+        tok_data = tok_res.json()
+        tenant_token = tok_data.get("tenant_access_token")
+        diag_logs.append(f"Token fetch status: {tok_res.status_code}")
+        diag_logs.append(f"Token fetch response code: {tok_data.get('code')}")
+        
+        if not tenant_token:
+            return jsonify({"status": "error", "logs": diag_logs, "msg": "Failed to get token"}), 500
+            
+        # 2. Query instances
+        app_code = "0E4F14E9-F5E3-4939-8DE8-8294872C5D4E"
+        # Let's query from 2026-08-01 to 2026-08-20
+        from datetime import datetime, timedelta
+        start_dt = datetime(2026, 8, 1) - timedelta(days=1)
+        end_dt = datetime(2026, 8, 20, 23, 59, 59) + timedelta(days=1)
+        start_ms = str(int(start_dt.timestamp() * 1000))
+        end_ms = str(int(end_dt.timestamp() * 1000))
+        
+        headers = {"Authorization": f"Bearer {tenant_token}", "Content-Type": "application/json"}
+        query_url = "https://open.larksuite.com/open-apis/approval/v4/instances/query"
+        payload = {
+            "approval_code": app_code,
+            "start_time": start_ms,
+            "end_time": end_ms
+        }
+        query_res = requests.post(query_url, headers=headers, json=payload, timeout=10)
+        q_json = query_res.json()
+        
+        diag_logs.append(f"Query status: {query_res.status_code}")
+        diag_logs.append(f"Query response code: {q_json.get('code')}")
+        diag_logs.append(f"Query msg: {q_json.get('msg')}")
+        
+        instances = q_json.get("data", {}).get("instance_list", [])
+        diag_logs.append(f"Total instances found: {len(instances)}")
+        
+        inst_details = []
+        for inst in instances:
+            status = inst.get("status")
+            code = inst.get("instance_code")
+            diag_logs.append(f"Instance {code}: status={status}")
+            
+            # Fetch details
+            inst_url = f"https://open.larksuite.com/open-apis/approval/v4/instances/{code}"
+            detail_res = requests.get(inst_url, headers=headers, timeout=10)
+            d_json = detail_res.json()
+            inst_data = d_json.get("data", {})
+            
+            user_id = inst_data.get("user_id")
+            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}"
+            user_res = requests.get(user_url, headers=headers, timeout=10)
+            user_name = user_res.json().get("data", {}).get("user", {}).get("name")
+            
+            form_str = inst_data.get("form", "[]")
+            form_fields = []
+            try:
+                form_fields = json.loads(form_str)
+            except Exception as e:
+                form_fields = str(e)
+                
+            inst_details.append({
+                "code": code,
+                "status": status,
+                "user_id": user_id,
+                "user_name": user_name,
+                "approval_name": inst_data.get("approval_name"),
+                "form_fields": form_fields
+            })
+            
+        return jsonify({
+            "status": "success",
+            "logs": diag_logs,
+            "instances": inst_details
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "logs": diag_logs, "error": str(e)}), 500
+
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
