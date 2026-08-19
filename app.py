@@ -2220,6 +2220,31 @@ def employee_change_pin():
         return jsonify({"status": "error", "message": "Đã xảy ra lỗi hệ thống!"}), 500
 
 
+# Temporary password reset route for Admin/CEO
+@app.route('/api/admin/reset-password-temp', methods=['GET'])
+def reset_password_temp():
+    try:
+        setting_admin = Setting.query.filter_by(key='admin_password').first()
+        if not setting_admin:
+            setting_admin = Setting(key='admin_password', value='Admin@KimQ')
+            db.session.add(setting_admin)
+        else:
+            setting_admin.value = 'Admin@KimQ'
+            
+        setting_ceo = Setting.query.filter_by(key='ceo_password').first()
+        if not setting_ceo:
+            setting_ceo = Setting(key='ceo_password', value='CEO@KimQ')
+            db.session.add(setting_ceo)
+        else:
+            setting_ceo.value = 'CEO@KimQ'
+            
+        db.session.commit()
+        return "Đã đưa mật khẩu Admin về 'Admin@KimQ' và CEO về 'CEO@KimQ' thành công!", 200
+    except Exception as e:
+        db.session.rollback()
+        return f"Lỗi reset: {str(e)}", 500
+
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
