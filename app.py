@@ -2083,10 +2083,12 @@ def admin_sync_lark_approvals():
         synced_items = []
         
         for inst in instances:
-            if inst.get("status") != "APPROVED":
+            instance_data = inst.get("instance", {})
+            status = instance_data.get("status", "")
+            if status.upper() != "APPROVED":
                 continue
                 
-            code = inst.get("instance_code")
+            code = instance_data.get("code")
             
             # Get instance details
             inst_url = f"https://open.larksuite.com/open-apis/approval/v4/instances/{code}"
