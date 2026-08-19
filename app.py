@@ -464,18 +464,35 @@ def lark_webhook():
                             
                             # c. Get Initiator user name
                             user_id = inst_data.get("user_id")
-                            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}"
-                            user_res = requests.get(user_url, headers=headers, timeout=10)
-                            user_name = user_res.json().get("data", {}).get("user", {}).get("name")
+                            form_str = inst_data.get("form", "[]")
+                            import json
+                            form_fields = []
+                            try:
+                                form_fields = json.loads(form_str)
+                            except Exception as e:
+                                logging.error(f"Error parsing form fields in webhook: {e}")
+
+                            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}?user_id_type=user_id"
+                            user_name = None
+                            try:
+                                user_res = requests.get(user_url, headers=headers, timeout=10)
+                                user_name = user_res.json().get("data", {}).get("user", {}).get("name")
+                            except Exception as e:
+                                logging.error(f"Error fetching user name in webhook: {e}")
+                                
+                            if not user_name:
+                                # Resilient fallback: parse form fields to find name
+                                for f in form_fields:
+                                    f_name = str(f.get("name") or "").lower()
+                                    if "name" in f_name or "tên" in f_name or "nhân viên" in f_name:
+                                        val = f.get("value")
+                                        if val and isinstance(val, str):
+                                            user_name = val.strip()
+                                            break
                             
                             if not user_name:
                                 logging.error(f"Could not retrieve user details for Lark user ID {user_id}")
                                 return
-                                
-                            # d. Parse form data to find dates and leave types
-                            form_str = inst_data.get("form", "[]")
-                            import json
-                            form_fields = json.loads(form_str)
                             
                             # Standard leaves usually have fields containing start_time, end_time, etc.
                             logging.info(f"Lark Approval Form Fields: {form_fields}")
@@ -2096,14 +2113,32 @@ def admin_sync_lark_approvals():
             inst_details = inst_res.json().get("data", {})
                 
             user_id = inst_details.get("user_id")
-            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}"
-            user_res = requests.get(user_url, headers=headers, timeout=10)
-            user_name = user_res.json().get("data", {}).get("user", {}).get("name")
-            
+            form_fields = []
+            try:
+                form_fields = json.loads(inst_details.get("form", "[]"))
+            except Exception as e:
+                logging.error(f"Error parsing form fields in manual sync: {e}")
+
+            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}?user_id_type=user_id"
+            user_name = None
+            try:
+                user_res = requests.get(user_url, headers=headers, timeout=10)
+                user_name = user_res.json().get("data", {}).get("user", {}).get("name")
+            except Exception as e:
+                logging.error(f"Error fetching user name in manual sync: {e}")
+                
+            if not user_name:
+                # Resilient fallback: parse form fields to find name
+                for f in form_fields:
+                    f_name = str(f.get("name") or "").lower()
+                    if "name" in f_name or "tên" in f_name or "nhân viên" in f_name:
+                        val = f.get("value")
+                        if val and isinstance(val, str):
+                            user_name = val.strip()
+                            break
+                            
             if not user_name:
                 continue
-                
-            form_fields = json.loads(inst_details.get("form", "[]"))
             
             start_date_raw = None
             interval_val = 1.0
@@ -2319,16 +2354,29 @@ def diagnose_lark_prod():
             inst_data = d_json.get("data", {})
             
             user_id = inst_data.get("user_id")
-            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}"
-            user_res = requests.get(user_url, headers=headers, timeout=10)
-            user_name = user_res.json().get("data", {}).get("user", {}).get("name")
-            
             form_str = inst_data.get("form", "[]")
             form_fields = []
             try:
                 form_fields = json.loads(form_str)
             except Exception as e:
-                form_fields = str(e)
+                form_fields = []
+                
+            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}?user_id_type=user_id"
+            user_name = None
+            try:
+                user_res = requests.get(user_url, headers=headers, timeout=10)
+                user_name = user_res.json().get("data", {}).get("user", {}).get("name")
+            except Exception as e:
+                pass
+                
+            if not user_name:
+                for f in form_fields:
+                    f_name = str(f.get("name") or "").lower()
+                    if "name" in f_name or "tên" in f_name or "nhân viên" in f_name:
+                        val = f.get("value")
+                        if val and isinstance(val, str):
+                            user_name = val.strip()
+                            break
                 
             inst_details.append({
                 "code": code,
