@@ -2300,6 +2300,8 @@ def diagnose_lark_prod():
         
         instances = q_json.get("data", {}).get("instance_list", [])
         diag_logs.append(f"Total instances found: {len(instances)}")
+        if instances:
+            diag_logs.append(f"Raw first instance keys and values: {json.dumps(instances[0])}")
         
         inst_details = []
         for inst in instances:
