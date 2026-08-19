@@ -292,6 +292,7 @@ def process_lark_adjustment(employee_name, date_str, leave_type, note):
     def remove_accents(input_str):
         if not input_str:
             return ""
+        input_str = input_str.replace("Đ", "D").replace("đ", "d")
         nfkd_form = unicodedata.normalize('NFKD', input_str)
         only_ascii = nfkd_form.encode('ASCII', 'ignore').decode('utf-8')
         return only_ascii.lower().strip()
