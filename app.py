@@ -1063,7 +1063,7 @@ def get_checkins():
                             is_excused_late = True
                             
                     t_in_mins = check_in_time.hour * 60 + check_in_time.minute + check_in_time.second / 60.0
-                    is_late = False if (is_wfh_morning or is_excused_late) else (t_in_mins > 555) # after 9:15 AM
+                    is_late = False if (is_wfh_morning or is_excused_late) else (t_in_mins >= 556) # from 9:16 AM onwards
                     
                     is_early_leave = False
                     if check_out_time is not None:

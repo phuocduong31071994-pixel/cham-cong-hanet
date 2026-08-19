@@ -31,8 +31,8 @@ Dự án này là hệ thống Web Tra cứu và Bổ sung công quẹt thẻ Ha
 * **Thêm cột quản lý vi phạm:** Bổ sung 2 cột **"Lần vi phạm trong tháng"** và **"Hình thức xử lý vi phạm"** để tự động kết xuất thống kê nhắc nhở/phạt tiền của nhân sự theo tháng.
 
 ## 6. Quy định đi trễ & Cảnh báo phê duyệt Lark
-* **Thời gian bắt đầu đi trễ:** Sau 9h15 mới tính là đi trễ (tức là từ 09:15:01 trở đi).
-* **Công thức tính thời gian trễ:** Thời gian trễ (phút) = Giờ vào (phút) - 9h15 (555 phút).
+* **Thời gian bắt đầu đi trễ:** Tròn 9h16 mới tính là đi trễ (tức là từ 09:16:00 trở đi).
+* **Công thức tính thời gian trễ:** Thời gian trễ (phút) = Giờ vào (phút) - 9h16 (556 phút).
 * **Điều kiện Cảnh báo phê duyệt Lark (Quá 30 phút):**
   * Nếu giờ quét vào muộn hơn **9h30** (sau 9:30 AM) ➔ Nhãn: **"Trễ so với quy định, xin phê duyệt qua Lark"**.
   * Nếu giờ quét ra sớm hơn **17h30** (trước 5:30 PM) ➔ Nhãn: **"Sớm so với quy định, xin phê duyệt qua Lark"**.
