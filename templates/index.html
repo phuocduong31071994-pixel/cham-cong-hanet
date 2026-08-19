@@ -898,8 +898,6 @@
 
             // Initialize separate Flatpickrs for From Date and To Date
             const fpFrom = flatpickr(dateFromInput, {
-                altInput: true,
-                altFormat: "d/m/Y",
                 dateFormat: "Y-m-d",
                 defaultDate: todayStr,
                 onChange: function(selectedDates, dateStr, instance) {
@@ -912,8 +910,6 @@
             });
 
             const fpTo = flatpickr(dateToInput, {
-                altInput: true,
-                altFormat: "d/m/Y",
                 dateFormat: "Y-m-d",
                 defaultDate: todayStr,
                 onChange: function(selectedDates, dateStr, instance) {
@@ -2470,6 +2466,7 @@ timer = setTimeout(loadData, 300);
                         "Giờ công thực tế",
                         "Đánh giá công",
                         "Lần vi phạm trong tháng",
+                        "Hình thức xử lý vi phạm",
                         "Ghi chú",
                         "Request",
                         "Số lần quét",
@@ -2492,6 +2489,7 @@ timer = setTimeout(loadData, 300);
                         group.work_hours,
                         group.rating,
                         group.violation_index,
+                        group.violation_penalty,
                         "", // Ghi chú (manual notes)
                         group.request || '',
                         group.scan_count,

@@ -1,6 +1,16 @@
+import sys
 import requests
 import json
 import time
+
+# Reconfigure stdout and stderr to support UTF-8 on Windows terminal
+if sys.platform.startswith('win'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
+
 
 url = "http://127.0.0.1:5000/webhook/hanet"
 

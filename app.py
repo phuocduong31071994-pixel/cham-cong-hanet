@@ -7,6 +7,19 @@ from flask import Flask, render_template, request, jsonify, session, send_file
 from flask_sqlalchemy import SQLAlchemy
 import requests
 
+# Load .env file manually if it exists (fallback since python-dotenv is not installed)
+if os.path.exists(".env"):
+    with open(".env", "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("=", 1)
+            if len(parts) == 2:
+                key = parts[0].strip()
+                val = parts[1].strip().strip('"').strip("'")
+                os.environ[key] = val
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -1098,7 +1111,14 @@ def get_checkins():
             serialized_data.append(d)
 
         # Generate dummy "Absent" records for active employees with no scans/adjustments on weekdays
-        all_employees = Employee.query.all()
+        if search_query:
+            all_employees = Employee.query.filter(
+                (Employee.name.ilike(f"%{search_query}%")) |
+                (Employee.alias_id.ilike(f"%{search_query}%")) |
+                (Employee.person_id.ilike(f"%{search_query}%"))
+            ).all()
+        else:
+            all_employees = Employee.query.all()
         try:
             d_start = datetime.strptime(start_date, "%Y-%m-%d").date()
             d_end = datetime.strptime(end_date, "%Y-%m-%d").date()
