@@ -2307,8 +2307,9 @@ def diagnose_lark_prod():
         
         inst_details = []
         for inst in instances:
-            status = inst.get("status")
-            code = inst.get("instance_code")
+            instance_data = inst.get("instance", {})
+            status = instance_data.get("status", "")
+            code = instance_data.get("code")
             diag_logs.append(f"Instance {code}: status={status}")
             
             # Fetch details
