@@ -884,8 +884,6 @@ def get_checkins():
     try:
         # Sync employee name changes from Hanet
         sync_employee_names()
-        # Auto-sync approvals from Lark Suite in background
-        sync_lark_approvals_auto()
         
         is_admin = session.get('is_admin', False)
         search_query = request.args.get('search', '').strip()
@@ -919,8 +917,9 @@ def get_checkins():
         except ValueError:
             return jsonify({"status": "error", "message": "Định dạng ngày tháng không hợp lệ!"}), 400
 
-        # Perform automatic sync for this range
+        # Perform automatic sync for this range from Hanet and Lark
         sync_hanet_history_for_range(start_date, end_date)
+        sync_lark_approvals_auto(start_date[:7] if start_date else None)
 
         # Anyone can view active check-ins (public access) - filtered to active employees only
         active_emp_ids = [e.person_id for e in Employee.query.all()]
@@ -2103,9 +2102,9 @@ def sync_lark_approvals_internal(month_str=None):
     num_days = calendar.monthrange(year, month)[1]
     
     # Start and end timestamps in milliseconds (UTC+7 aligned roughly to UTC for Lark query)
-    # Widen the window by 60 days prior and 35 days ahead so any advance leave is captured
-    start_dt = datetime(year, month, 1) - timedelta(days=60)
-    end_dt = datetime(year, month, num_days, 23, 59, 59) + timedelta(days=35)
+    # Widen the window by 90 days prior and 60 days ahead so any past or advance leaves across month boundaries are captured
+    start_dt = datetime(year, month, 1) - timedelta(days=90)
+    end_dt = datetime(year, month, num_days, 23, 59, 59) + timedelta(days=60)
     start_ms = str(int(start_dt.timestamp() * 1000))
     end_ms = str(int(end_dt.timestamp() * 1000))
     
@@ -2255,21 +2254,21 @@ def sync_lark_approvals_internal(month_str=None):
 
 LAST_LARK_AUTO_SYNC = 0
 
-def sync_lark_approvals_auto():
+def sync_lark_approvals_auto(month_str=None):
     """
     Triggers an automatic background sync of Lark approvals whenever users visit the app.
-    Has a 3-minute cooldown to prevent excess load.
+    Has a 2-minute cooldown to prevent excess load.
     """
     global LAST_LARK_AUTO_SYNC
     now = time.time()
-    if now - LAST_LARK_AUTO_SYNC < 180: # 3-minute cooldown
+    if now - LAST_LARK_AUTO_SYNC < 120: # 2-minute cooldown
         return
     LAST_LARK_AUTO_SYNC = now
     
     def run_auto_sync():
         with app.app_context():
             try:
-                count, items, err = sync_lark_approvals_internal()
+                count, items, err = sync_lark_approvals_internal(month_str)
                 if count > 0:
                     logging.info(f"Auto-synced {count} Lark approvals in background: {items}")
             except Exception as e:
@@ -2279,7 +2278,7 @@ def sync_lark_approvals_auto():
 
 def start_lark_periodic_sync():
     """
-    Background worker that runs every 15 minutes to automatically fetch approvals from Lark.
+    Background worker that runs every 10 minutes to automatically fetch approvals from Lark.
     """
     def periodic_worker():
         time.sleep(30) # Initial 30s delay after startup
@@ -2291,7 +2290,7 @@ def start_lark_periodic_sync():
                         logging.info(f"Periodic auto-synced {count} Lark approvals: {items}")
             except Exception as e:
                 logging.error(f"Periodic Lark sync error: {e}")
-            time.sleep(900) # Every 15 minutes
+            time.sleep(600) # Every 10 minutes
             
     threading.Thread(target=periodic_worker, daemon=True).start()
 
