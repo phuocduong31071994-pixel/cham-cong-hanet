@@ -891,6 +891,8 @@ def get_checkins():
     try:
         # Sync employee name changes from Hanet
         sync_employee_names()
+        # Auto-sync approvals from Lark Suite in background
+        sync_lark_approvals_auto()
         
         is_admin = session.get('is_admin', False)
         search_query = request.args.get('search', '').strip()
@@ -2065,195 +2067,245 @@ def admin_export_timesheet():
         logging.error(f"Error exporting timesheet matrix: {str(e)}")
         return jsonify({"status": "error", "message": f"Export failed: {str(e)}"}), 500
 
+# Reusable function for syncing approvals from Lark Suite
+def sync_lark_approvals_internal(month_str=None):
+    import json
+    import calendar
+    
+    lark_app_id = os.getenv("LARK_APP_ID")
+    lark_app_secret = os.getenv("LARK_APP_SECRET")
+    
+    if not lark_app_id or not lark_app_secret:
+        return 0, [], "Thông tin xác thực ứng dụng Lark chưa được cấu hình trên Railway!"
+        
+    if not month_str:
+        month_str = datetime.now().strftime('%Y-%m')
+        
+    parts = month_str.split('-')
+    year = int(parts[0])
+    month = int(parts[1])
+    num_days = calendar.monthrange(year, month)[1]
+    
+    # Start and end timestamps in milliseconds (UTC+7 aligned roughly to UTC for Lark query)
+    # Widen the window by 60 days prior and 35 days ahead so any advance leave is captured
+    start_dt = datetime(year, month, 1) - timedelta(days=60)
+    end_dt = datetime(year, month, num_days, 23, 59, 59) + timedelta(days=35)
+    start_ms = str(int(start_dt.timestamp() * 1000))
+    end_ms = str(int(end_dt.timestamp() * 1000))
+    
+    # 1. Fetch Tenant Access Token
+    token_url = "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal"
+    tok_res = requests.post(token_url, json={"app_id": lark_app_id, "app_secret": lark_app_secret}, timeout=10)
+    tenant_token = tok_res.json().get("tenant_access_token")
+    if not tenant_token:
+        return 0, [], "Không thể kết nối API Lark Suite để lấy Token"
+        
+    # 2. Query instances for the main Leave/WFH Approval form directly with pagination
+    app_code = "0E4F14E9-F5E3-4939-8DE8-8294872C5D4E"
+    headers = {"Authorization": f"Bearer {tenant_token}", "Content-Type": "application/json"}
+    query_url = "https://open.larksuite.com/open-apis/approval/v4/instances/query"
+    
+    instances = []
+    has_more = True
+    page_token = None
+    
+    while has_more:
+        payload = {
+            "approval_code": app_code,
+            "start_time": start_ms,
+            "end_time": end_ms,
+            "page_size": 100
+        }
+        if page_token:
+            payload["page_token"] = page_token
+            
+        query_res = requests.post(query_url, headers=headers, json=payload, timeout=15)
+        q_json = query_res.json()
+        
+        if q_json.get("code") != 0:
+            err_msg = q_json.get("msg", "")
+            if "permission_violations" in str(q_json) or "scope" in err_msg.lower() or q_json.get("code") == 99991672:
+                return 0, [], "Ứng dụng Lark của bạn chưa được cấp quyền 'approval:approval.list:readonly'."
+            logging.error(f"Lỗi truy vấn đơn từ Lark: {err_msg}")
+            break
+            
+        data_field = q_json.get("data", {})
+        batch = data_field.get("instance_list", [])
+        instances.extend(batch)
+        
+        has_more = data_field.get("has_more", False)
+        page_token = data_field.get("page_token")
+        if not page_token or not has_more:
+            break
+    
+    synced_count = 0
+    synced_items = []
+    
+    for inst in instances:
+        instance_data = inst.get("instance", {})
+        status = instance_data.get("status", "")
+        if str(status).upper() != "APPROVED":
+            continue
+            
+        code = instance_data.get("code")
+        
+        # Get instance details
+        inst_url = f"https://open.larksuite.com/open-apis/approval/v4/instances/{code}"
+        inst_res = requests.get(inst_url, headers=headers, timeout=10)
+        inst_details = inst_res.json().get("data", {})
+            
+        user_id = inst_details.get("user_id")
+        form_fields = []
+        try:
+            form_fields = json.loads(inst_details.get("form", "[]"))
+        except Exception as e:
+            logging.error(f"Error parsing form fields: {e}")
+
+        user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}?user_id_type=user_id"
+        user_name = None
+        try:
+            user_res = requests.get(user_url, headers=headers, timeout=10)
+            user_name = user_res.json().get("data", {}).get("user", {}).get("name")
+        except Exception as e:
+            logging.error(f"Error fetching user name: {e}")
+            
+        if not user_name:
+            # Resilient fallback: parse form fields to find name
+            for f in form_fields:
+                f_name = str(f.get("name") or "").lower()
+                if "name" in f_name or "tên" in f_name or "nhân viên" in f_name:
+                    val = f.get("value")
+                    if val and isinstance(val, str):
+                        user_name = val.strip()
+                        break
+                        
+        if not user_name:
+            continue
+        
+        start_date_raw = None
+        interval_val = 1.0
+        tz_offset = -420
+        leave_type_val = inst_details.get("approval_name") or "Leave/WFH"
+        
+        for f in form_fields:
+            f_type = f.get("type")
+            f_val = f.get("value")
+            if f_type == "dateInterval" and isinstance(f_val, dict):
+                start_date_raw = f_val.get("start")
+                interval_val = float(f_val.get("interval", 1.0))
+                tz_offset = int(f_val.get("timezoneOffset", -420))
+            elif f_type == "date" and isinstance(f_val, str):
+                start_date_raw = f_val
+            elif f_type in ["select", "radio", "checkbox", "input", "widget", "radioV2", "selectV2", "checkboxV2", "textarea"]:
+                if isinstance(f_val, str):
+                    try:
+                        val_json = json.loads(f_val)
+                        if isinstance(val_json, dict) and "value" in val_json:
+                            leave_type_val = val_json.get("value")
+                        elif isinstance(val_json, list) and len(val_json) > 0:
+                            leave_type_val = val_json[0]
+                        else:
+                            leave_type_val = f_val
+                    except:
+                        leave_type_val = f_val
+                elif isinstance(f_val, dict):
+                    leave_type_val = f_val.get("value") or f_val.get("name") or str(f_val)
+                elif isinstance(f_val, list) and len(f_val) > 0:
+                    first_val = f_val[0]
+                    if isinstance(first_val, dict):
+                        leave_type_val = first_val.get("value") or first_val.get("name") or str(first_val)
+                    else:
+                        leave_type_val = str(first_val)
+                
+        if not start_date_raw:
+            start_time_epoch = inst_details.get("start_time")
+            if start_time_epoch:
+                start_date_raw = datetime.fromtimestamp(int(start_time_epoch)/1000).strftime("%Y-%m-%d")
+                
+        if start_date_raw:
+            start_date = parse_lark_date(start_date_raw, tz_offset)
+            start_dt_inst = datetime.strptime(start_date, "%Y-%m-%d")
+            num_days = max(1, int(interval_val))
+            
+            # Apply leave adjustments for all valid dates in this approved application
+            for i in range(num_days):
+                curr_date_dt = start_dt_inst + timedelta(days=i)
+                curr_date = curr_date_dt.strftime("%Y-%m-%d")
+                
+                success, msg = process_lark_adjustment(
+                    user_name,
+                    curr_date,
+                    leave_type_val,
+                    f"Lark Sync: {inst_details.get('approval_name', 'Nghỉ phép/WFH')}"
+                )
+                if success:
+                    synced_count += 1
+                    synced_items.append(f"{user_name} ({curr_date})")
+                    
+    return synced_count, synced_items, None
+
+LAST_LARK_AUTO_SYNC = 0
+
+def sync_lark_approvals_auto():
+    """
+    Triggers an automatic background sync of Lark approvals whenever users visit the app.
+    Has a 3-minute cooldown to prevent excess load.
+    """
+    global LAST_LARK_AUTO_SYNC
+    now = time.time()
+    if now - LAST_LARK_AUTO_SYNC < 180: # 3-minute cooldown
+        return
+    LAST_LARK_AUTO_SYNC = now
+    
+    def run_auto_sync():
+        with app.app_context():
+            try:
+                count, items, err = sync_lark_approvals_internal()
+                if count > 0:
+                    logging.info(f"Auto-synced {count} Lark approvals in background: {items}")
+            except Exception as e:
+                logging.error(f"Error in auto-syncing Lark approvals: {e}")
+                
+    threading.Thread(target=run_auto_sync, daemon=True).start()
+
+def start_lark_periodic_sync():
+    """
+    Background worker that runs every 15 minutes to automatically fetch approvals from Lark.
+    """
+    def periodic_worker():
+        time.sleep(30) # Initial 30s delay after startup
+        while True:
+            try:
+                with app.app_context():
+                    count, items, err = sync_lark_approvals_internal()
+                    if count > 0:
+                        logging.info(f"Periodic auto-synced {count} Lark approvals: {items}")
+            except Exception as e:
+                logging.error(f"Periodic Lark sync error: {e}")
+            time.sleep(900) # Every 15 minutes
+            
+    threading.Thread(target=periodic_worker, daemon=True).start()
+
+# Start background periodic thread
+start_lark_periodic_sync()
+
 # Admin Force Sync Lark Approvals Endpoint
 @app.route('/api/admin/sync-lark-approvals', methods=['POST'])
 def admin_sync_lark_approvals():
     if not session.get('is_admin', False):
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
         
-    lark_app_id = os.getenv("LARK_APP_ID")
-    lark_app_secret = os.getenv("LARK_APP_SECRET")
-    
-    if not lark_app_id or not lark_app_secret:
-        return jsonify({"status": "error", "message": "Thông tin xác thực ứng dụng Lark (LARK_APP_ID, LARK_APP_SECRET) chưa được cấu hình trên Railway!"}), 400
-        
     try:
-        import json
-        import calendar
-        
         data = request.json or {}
-        month_str = data.get('month') # 'YYYY-MM'
-        if not month_str:
-            month_str = datetime.now().strftime('%Y-%m')
+        month_str = data.get('month')
+        count, items, err = sync_lark_approvals_internal(month_str)
+        if err:
+            return jsonify({"status": "error", "message": err}), 400
             
-        parts = month_str.split('-')
-        year = int(parts[0])
-        month = int(parts[1])
-        num_days = calendar.monthrange(year, month)[1]
-        
-        # Start and end timestamps in milliseconds (UTC+7 aligned roughly to UTC for Lark query)
-        # Widen the window by 60 days prior and 35 days ahead so any advance leave is captured
-        start_dt = datetime(year, month, 1) - timedelta(days=60)
-        end_dt = datetime(year, month, num_days, 23, 59, 59) + timedelta(days=35)
-        start_ms = str(int(start_dt.timestamp() * 1000))
-        end_ms = str(int(end_dt.timestamp() * 1000))
-        
-        # 1. Fetch Tenant Access Token
-        token_url = "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal"
-        tok_res = requests.post(token_url, json={"app_id": lark_app_id, "app_secret": lark_app_secret}, timeout=10)
-        tenant_token = tok_res.json().get("tenant_access_token")
-        if not tenant_token:
-            return jsonify({"status": "error", "message": "Không thể kết nối API Lark Suite để lấy Token"}), 500
-            
-        # 2. Query instances for the main Leave/WFH Approval form directly with pagination
-        app_code = "0E4F14E9-F5E3-4939-8DE8-8294872C5D4E"
-        headers = {"Authorization": f"Bearer {tenant_token}", "Content-Type": "application/json"}
-        query_url = "https://open.larksuite.com/open-apis/approval/v4/instances/query"
-        
-        instances = []
-        has_more = True
-        page_token = None
-        
-        while has_more:
-            payload = {
-                "approval_code": app_code,
-                "start_time": start_ms,
-                "end_time": end_ms,
-                "page_size": 100
-            }
-            if page_token:
-                payload["page_token"] = page_token
-                
-            query_res = requests.post(query_url, headers=headers, json=payload, timeout=15)
-            q_json = query_res.json()
-            
-            if q_json.get("code") != 0:
-                err_msg = q_json.get("msg", "")
-                if "permission_violations" in str(q_json) or "scope" in err_msg.lower() or q_json.get("code") == 99991672:
-                    return jsonify({
-                        "status": "error", 
-                        "message": "Ứng dụng Lark của bạn chưa được cấp quyền 'approval:approval.list:readonly' (Xem danh sách đơn duyệt). Vui lòng vào Lark Developer Console -> Permission Administration, cấp quyền này cho ứng dụng và phát hành phiên bản mới để đồng bộ."
-                    }), 400
-                logging.error(f"Lỗi truy vấn đơn từ Lark: {err_msg}")
-                break
-                
-            data_field = q_json.get("data", {})
-            batch = data_field.get("instance_list", [])
-            instances.extend(batch)
-            
-            has_more = data_field.get("has_more", False)
-            page_token = data_field.get("page_token")
-            if not page_token or not has_more:
-                break
-        
-        synced_count = 0
-        synced_items = []
-        
-        for inst in instances:
-            instance_data = inst.get("instance", {})
-            status = instance_data.get("status", "")
-            if str(status).upper() != "APPROVED":
-                continue
-                
-            code = instance_data.get("code")
-            
-            # Get instance details
-            inst_url = f"https://open.larksuite.com/open-apis/approval/v4/instances/{code}"
-            inst_res = requests.get(inst_url, headers=headers, timeout=10)
-            inst_details = inst_res.json().get("data", {})
-                
-            user_id = inst_details.get("user_id")
-            form_fields = []
-            try:
-                form_fields = json.loads(inst_details.get("form", "[]"))
-            except Exception as e:
-                logging.error(f"Error parsing form fields in manual sync: {e}")
-
-            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}?user_id_type=user_id"
-            user_name = None
-            try:
-                user_res = requests.get(user_url, headers=headers, timeout=10)
-                user_name = user_res.json().get("data", {}).get("user", {}).get("name")
-            except Exception as e:
-                logging.error(f"Error fetching user name in manual sync: {e}")
-                
-            if not user_name:
-                # Resilient fallback: parse form fields to find name
-                for f in form_fields:
-                    f_name = str(f.get("name") or "").lower()
-                    if "name" in f_name or "tên" in f_name or "nhân viên" in f_name:
-                        val = f.get("value")
-                        if val and isinstance(val, str):
-                            user_name = val.strip()
-                            break
-                            
-            if not user_name:
-                continue
-            
-            start_date_raw = None
-            interval_val = 1.0
-            tz_offset = -420
-            leave_type_val = inst_details.get("approval_name") or "Leave/WFH"
-            
-            for f in form_fields:
-                f_type = f.get("type")
-                f_val = f.get("value")
-                if f_type == "dateInterval" and isinstance(f_val, dict):
-                    start_date_raw = f_val.get("start")
-                    interval_val = float(f_val.get("interval", 1.0))
-                    tz_offset = int(f_val.get("timezoneOffset", -420))
-                elif f_type == "date" and isinstance(f_val, str):
-                    start_date_raw = f_val
-                elif f_type in ["select", "radio", "checkbox", "input", "widget", "radioV2", "selectV2", "checkboxV2", "textarea"]:
-                    if isinstance(f_val, str):
-                        try:
-                            val_json = json.loads(f_val)
-                            if isinstance(val_json, dict) and "value" in val_json:
-                                leave_type_val = val_json.get("value")
-                            elif isinstance(val_json, list) and len(val_json) > 0:
-                                leave_type_val = val_json[0]
-                            else:
-                                leave_type_val = f_val
-                        except:
-                            leave_type_val = f_val
-                    elif isinstance(f_val, dict):
-                        leave_type_val = f_val.get("value") or f_val.get("name") or str(f_val)
-                    elif isinstance(f_val, list) and len(f_val) > 0:
-                        first_val = f_val[0]
-                        if isinstance(first_val, dict):
-                            leave_type_val = first_val.get("value") or first_val.get("name") or str(first_val)
-                        else:
-                            leave_type_val = str(first_val)
-                    
-            if not start_date_raw:
-                start_time_epoch = inst_details.get("start_time")
-                if start_time_epoch:
-                    start_date_raw = datetime.fromtimestamp(int(start_time_epoch)/1000).strftime("%Y-%m-%d")
-                    
-            if start_date_raw:
-                start_date = parse_lark_date(start_date_raw, tz_offset)
-                start_dt_inst = datetime.strptime(start_date, "%Y-%m-%d")
-                num_days = max(1, int(interval_val))
-                
-                # Apply leave adjustments for all valid dates in this approved application
-                for i in range(num_days):
-                    curr_date_dt = start_dt_inst + timedelta(days=i)
-                    curr_date = curr_date_dt.strftime("%Y-%m-%d")
-                    
-                    success, msg = process_lark_adjustment(
-                        user_name,
-                        curr_date,
-                        leave_type_val,
-                        f"Lark Sync: {inst_details.get('approval_name', 'Nghỉ phép/WFH')}"
-                    )
-                    if success:
-                        synced_count += 1
-                        synced_items.append(f"{user_name} ({curr_date})")
-                                
         return jsonify({
             "status": "success",
-            "message": f"Đồng bộ đơn phép thành công! Đã cập nhật {synced_count} ngày phép/WFH từ Lark.",
-            "synced_items": synced_items
+            "message": f"Đồng bộ đơn phép thành công! Đã cập nhật {count} ngày phép/WFH từ Lark.",
+            "synced_items": items
         }), 200
         
     except Exception as e:
