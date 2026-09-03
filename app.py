@@ -1797,6 +1797,12 @@ def admin_export_timesheet():
         from datetime import timezone
         vietnam_today = datetime.now(timezone(timedelta(hours=7))).date()
         
+        # Trigger an immediate internal sync with Lark for this month to ensure latest data
+        try:
+            sync_lark_approvals_internal(month_str)
+        except Exception as sync_err:
+            logging.error(f"Error auto-syncing Lark before matrix export: {sync_err}")
+
         # 1. Fetch active employees
         employees = Employee.query.all()
         employees = sorted(employees, key=lambda e: e.name)
@@ -1812,7 +1818,18 @@ def admin_export_timesheet():
         
         adj_map = {}
         for adj in adjustments:
-            adj_map[(adj.person_id, adj.date)] = adj.adjustment_type
+            t = adj.adjustment_type
+            if t:
+                t_str = str(t).strip()
+                if t_str.upper() in ['P', 'H', 'KL']:
+                    t_str = t_str.upper()
+                adj_map[(adj.person_id, adj.date)] = t_str
+            else:
+                note_l = (adj.note or '').lower()
+                if 'wfh' in note_l or 'home' in note_l:
+                    adj_map[(adj.person_id, adj.date)] = 'H'
+                elif any(k in note_l for k in ['leave', 'phép', 'annual']):
+                    adj_map[(adj.person_id, adj.date)] = 'P'
             
         # Fetch check-ins for the month to identify missing days
         start_dt_query = datetime(year, month, 1, 0, 0, 0)
@@ -1823,10 +1840,15 @@ def admin_export_timesheet():
         ).all()
         
         checked_in_set = set()
+        wfh_checkin_set = set()
         for ci in checkins:
             if ci.person_id:
                 ci_date_str = ci.time.strftime('%Y-%m-%d')
                 checked_in_set.add((ci.person_id, ci_date_str))
+                dev_str = str(ci.device_name or '').lower()
+                note_str = str(ci.adjustment_note or '').lower()
+                if ci.place_name == 'Work From Home (H)' or 'wfh' in dev_str or 'wfh' in note_str:
+                    wfh_checkin_set.add((ci.person_id, ci_date_str))
             
         # 3. Create Excel Workbook
         wb = openpyxl.Workbook()
@@ -1846,6 +1868,8 @@ def admin_export_timesheet():
         fill_weekend = PatternFill(start_color='F0AB6C', end_color='F0AB6C', fill_type='solid') # Orange
         fill_p = PatternFill(start_color='FFE599', end_color='FFE599', fill_type='solid') # Yellow
         fill_kl = PatternFill(start_color='FAD1D1', end_color='FAD1D1', fill_type='solid') # Pink
+        fill_h = PatternFill(start_color='CFE2F3', end_color='CFE2F3', fill_type='solid') # Light Cyan/Blue for WFH (H)
+        fill_wfh_half = PatternFill(start_color='D9EAD3', end_color='D9EAD3', fill_type='solid') # Soft Blue/Green for WFH Sáng/Chiều
         
         border_side = Side(border_style='thin', color='A0A0A0')
         border_thin = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
@@ -1990,23 +2014,38 @@ def admin_export_timesheet():
                     
                 # Check adjustment
                 adj_type = adj_map.get((emp.person_id, date_str))
+                if not adj_type and (emp.person_id, date_str) in wfh_checkin_set:
+                    adj_type = 'H'
+
                 if adj_type:
-                    if adj_type == 'P':
+                    adj_upper = str(adj_type).strip().upper()
+                    if adj_upper == 'P':
                         cell.value = 'P'
                         cell.fill = fill_p
                         p_days += 1.0
-                    elif adj_type == 'P/2':
+                    elif adj_upper == 'P/2':
                         cell.value = 'P/2'
                         cell.fill = fill_p
                         p_days += 0.5
-                    elif adj_type == 'KL':
+                    elif adj_upper == 'KL':
                         cell.value = 'KL'
                         cell.fill = fill_kl
                         kl_days += 1.0
-                    elif adj_type == 'KL/2':
+                    elif adj_upper == 'KL/2':
                         cell.value = 'KL/2'
                         cell.fill = fill_kl
                         kl_days += 0.5
+                    elif adj_upper in ['H', 'WFH', 'WORK FROM HOME']:
+                        cell.value = 'H'
+                        cell.fill = fill_h
+                    elif adj_type in ['wfh_am', 'H/S']:
+                        cell.value = 'H/S'
+                        cell.fill = fill_wfh_half
+                    elif adj_type in ['wfh_pm', 'H/C']:
+                        cell.value = 'H/C'
+                        cell.fill = fill_wfh_half
+                    else:
+                        cell.value = ''
                 else:
                     # If no adjustment and it is a past/current weekday, check if they checked in
                     if dt.weekday() < 5 and dt <= vietnam_today:
