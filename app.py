@@ -1797,12 +1797,6 @@ def admin_export_timesheet():
         from datetime import timezone
         vietnam_today = datetime.now(timezone(timedelta(hours=7))).date()
         
-        # Trigger an immediate internal sync with Lark for this month to ensure latest data
-        try:
-            sync_lark_approvals_internal(month_str)
-        except Exception as sync_err:
-            logging.error(f"Error auto-syncing Lark before matrix export: {sync_err}")
-
         # 1. Fetch active employees
         employees = Employee.query.all()
         employees = sorted(employees, key=lambda e: e.name)
@@ -1842,11 +1836,11 @@ def admin_export_timesheet():
         checked_in_set = set()
         wfh_checkin_set = set()
         for ci in checkins:
-            if ci.person_id:
+            if ci.person_id and ci.time:
                 ci_date_str = ci.time.strftime('%Y-%m-%d')
                 checked_in_set.add((ci.person_id, ci_date_str))
                 dev_str = str(ci.device_name or '').lower()
-                note_str = str(ci.adjustment_note or '').lower()
+                note_str = str(getattr(ci, 'adjustment_note', '') or '').lower()
                 if ci.place_name == 'Work From Home (H)' or 'wfh' in dev_str or 'wfh' in note_str:
                     wfh_checkin_set.add((ci.person_id, ci_date_str))
             
