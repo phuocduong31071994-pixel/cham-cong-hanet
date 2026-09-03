@@ -977,6 +977,22 @@ def get_checkins():
                 r.adjustment_note = adj.note or ('WFH buổi sáng' if adj.adjustment_type == 'wfh_am' else ('WFH buổi chiều' if adj.adjustment_type == 'wfh_pm' else 'Xin đi trễ/về sớm'))
                 filtered_records.append(r)
 
+        # Auto-heal any misclassified Lark adjustments in DB
+        try:
+            misclassified = AttendanceAdjustment.query.filter(
+                AttendanceAdjustment.adjustment_type == 'time',
+                AttendanceAdjustment.note.ilike('%Leave Application%')
+            ).all()
+            if misclassified:
+                for m in misclassified:
+                    m.adjustment_type = 'P'
+                    m.check_in = '09:00:00'
+                    m.check_out = '18:00:00'
+                db.session.commit()
+        except Exception as heal_err:
+            db.session.rollback()
+            logging.error(f"Error auto-healing adjustments: {heal_err}")
+
         # Append simulated scans for each adjustment
         for adj in adjustments:
             if adj.adjustment_type in ['wfh_am', 'wfh_pm', 'late', 'tre', 'di_tre', 'di_muon']:
@@ -986,6 +1002,13 @@ def get_checkins():
             emp_alias = emp.alias_id if emp else ""
             emp_avatar = emp.avatar_url if emp else ""
 
+            # Check if this adjustment is P, H, KL, or a Lark leave sync
+            is_p = adj.adjustment_type == 'P' or (adj.note and any(k in adj.note.lower() for k in ['leave application', 'nghỉ phép', 'annual leave']))
+            is_h = adj.adjustment_type == 'H' or (adj.note and 'wfh' in adj.note.lower())
+            is_kl = adj.adjustment_type == 'KL' or (adj.note and any(k in adj.note.lower() for k in ['không lương', 'unpaid']))
+            
+            p_name = "Nghỉ phép (P)" if is_p else ("Work From Home (H)" if is_h else ("Nghỉ không lương (KL)" if is_kl else "Văn phòng"))
+
             # Check-in scan
             check_in_time_str = adj.check_in or "09:00:00"
             c_in = CheckIn(
@@ -994,7 +1017,7 @@ def get_checkins():
                 person_name=emp_name,
                 alias_id=emp_alias,
                 time=datetime.strptime(f"{adj.date} {check_in_time_str}", '%Y-%m-%d %H:%M:%S'),
-                place_name="Nghỉ phép (P)" if adj.adjustment_type == 'P' else ("Work From Home (H)" if adj.adjustment_type == 'H' else ("Nghỉ không lương (KL)" if adj.adjustment_type == 'KL' else "Văn phòng")),
+                place_name=p_name,
                 device_name=f"Admin điều chỉnh: {adj.note or ''}",
                 avatar_url=emp_avatar
             )
@@ -1002,8 +1025,8 @@ def get_checkins():
             c_in.adjustment_note = adj.note
             filtered_records.append(c_in)
 
-            # Check-out scan (only if check_out is provided, or if P/H/KL)
-            if adj.check_out or adj.adjustment_type in ['P', 'H', 'KL']:
+            # Check-out scan (if check_out is provided, or if P/H/KL, or leave)
+            if adj.check_out or is_p or is_h or is_kl:
                 check_out_time_str = adj.check_out or "18:00:00"
                 c_out = CheckIn(
                     id=-2,
@@ -1011,7 +1034,7 @@ def get_checkins():
                     person_name=emp_name,
                     alias_id=emp_alias,
                     time=datetime.strptime(f"{adj.date} {check_out_time_str}", '%Y-%m-%d %H:%M:%S'),
-                    place_name="Nghỉ phép (P)" if adj.adjustment_type == 'P' else ("Work From Home (H)" if adj.adjustment_type == 'H' else ("Nghỉ không lương (KL)" if adj.adjustment_type == 'KL' else "Văn phòng")),
+                    place_name=p_name,
                     device_name=f"Admin điều chỉnh: {adj.note or ''}",
                     avatar_url=emp_avatar
                 )
