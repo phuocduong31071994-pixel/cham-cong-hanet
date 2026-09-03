@@ -369,17 +369,21 @@ def process_lark_adjustment(employee_name, date_str, leave_type, note):
         logging.error(f"Lark sync: Employee '{employee_name}' (normalized: '{name_clean_no_accent}') not found in KimQ database")
         return False, f"Employee '{employee_name}' not found"
     
-    # Determine adjustment type
-    adj_type = 'time'
-    check_in = None
-    check_out = None
+    # Determine adjustment type - Default to 'P' (paid leave) for any approved Lark leave application
+    adj_type = 'P'
+    check_in = '09:00:00'
+    check_out = '18:00:00'
     
     lt_lower = str(leave_type or '').lower()
     if 'wfh' in lt_lower or 'work from home' in lt_lower or 'home' in lt_lower:
         if 'sáng' in lt_lower or 'am' in lt_lower or 'morning' in lt_lower:
             adj_type = 'wfh_am'
+            check_in = None
+            check_out = None
         elif 'chiều' in lt_lower or 'pm' in lt_lower or 'afternoon' in lt_lower:
             adj_type = 'wfh_pm'
+            check_in = None
+            check_out = None
         else:
             adj_type = 'H'
             check_in = '09:00:00'
@@ -388,20 +392,16 @@ def process_lark_adjustment(employee_name, date_str, leave_type, note):
         adj_type = 'KL'
         check_in = '09:00:00'
         check_out = '18:00:00'
-    elif 'nghỉ' in lt_lower or 'phép' in lt_lower or 'leave' in lt_lower or 'p' == lt_lower or 'annual' in lt_lower:
-        adj_type = 'P'
-        check_in = '09:00:00'
-        check_out = '18:00:00'
     elif 'trễ' in lt_lower or 'muộn' in lt_lower or 'sớm' in lt_lower or 'late' in lt_lower:
         adj_type = 'late'
         check_in = None
         check_out = None
         note = "Đi trễ/về sớm đã phê duyệt qua Lark" + (f" ({note})" if note else "")
-    elif lt_lower in ['time', 'wfh_am', 'wfh_pm', 'p', 'h', 'kl']:
-        adj_type = leave_type
-        if adj_type in ['P', 'H', 'KL']:
-            check_in = '09:00:00'
-            check_out = '18:00:00'
+    else:
+        # Default is paid leave (P)
+        adj_type = 'P'
+        check_in = '09:00:00'
+        check_out = '18:00:00'
             
     # Upsert adjustment
     adj = AttendanceAdjustment.query.filter_by(person_id=emp.person_id, date=date_str).first()
@@ -544,26 +544,19 @@ def lark_webhook():
                                     tz_offset = int(f_val.get("timezoneOffset", -420))
                                 elif f_type == "date" and isinstance(f_val, str):
                                     start_date_raw = f_val
-                                elif f_type in ["select", "radio", "checkbox", "input", "widget", "radioV2", "selectV2", "checkboxV2", "textarea"]:
-                                    if isinstance(f_val, str):
-                                        try:
-                                            val_json = json.loads(f_val)
-                                            if isinstance(val_json, dict) and "value" in val_json:
-                                                leave_type_val = val_json.get("value")
-                                            elif isinstance(val_json, list) and len(val_json) > 0:
-                                                leave_type_val = val_json[0]
+                                elif f_type in ["radioV2", "selectV2", "radio", "select"] or any(k in str(f.get("name") or "").lower() for k in ["option", "loại", "hình thức", "leave", "phép", "wfh"]):
+                                    f_name_lower = str(f.get("name") or "").lower()
+                                    if not any(k in f_name_lower for k in ["employee", "tên", "nhân viên", "department", "phòng", "bộ phận", "position", "chức", "reason", "lý do"]):
+                                        if isinstance(f_val, str) and f_val.strip():
+                                            leave_type_val = f_val.strip()
+                                        elif isinstance(f_val, dict):
+                                            leave_type_val = f_val.get("value") or f_val.get("text") or f_val.get("name") or str(f_val)
+                                        elif isinstance(f_val, list) and len(f_val) > 0:
+                                            first_val = f_val[0]
+                                            if isinstance(first_val, dict):
+                                                leave_type_val = first_val.get("value") or first_val.get("text") or first_val.get("name") or str(first_val)
                                             else:
-                                                leave_type_val = f_val
-                                        except:
-                                            leave_type_val = f_val
-                                    elif isinstance(f_val, dict):
-                                        leave_type_val = f_val.get("value") or f_val.get("name") or str(f_val)
-                                    elif isinstance(f_val, list) and len(f_val) > 0:
-                                        first_val = f_val[0]
-                                        if isinstance(first_val, dict):
-                                            leave_type_val = first_val.get("value") or first_val.get("name") or str(first_val)
-                                        else:
-                                            leave_type_val = str(first_val)
+                                                leave_type_val = str(first_val)
                                     
                             if not start_date_raw:
                                 start_time_epoch = inst_data.get("start_time")
@@ -2196,26 +2189,19 @@ def sync_lark_approvals_internal(month_str=None):
                 tz_offset = int(f_val.get("timezoneOffset", -420))
             elif f_type == "date" and isinstance(f_val, str):
                 start_date_raw = f_val
-            elif f_type in ["select", "radio", "checkbox", "input", "widget", "radioV2", "selectV2", "checkboxV2", "textarea"]:
-                if isinstance(f_val, str):
-                    try:
-                        val_json = json.loads(f_val)
-                        if isinstance(val_json, dict) and "value" in val_json:
-                            leave_type_val = val_json.get("value")
-                        elif isinstance(val_json, list) and len(val_json) > 0:
-                            leave_type_val = val_json[0]
+            elif f_type in ["radioV2", "selectV2", "radio", "select"] or any(k in str(f.get("name") or "").lower() for k in ["option", "loại", "hình thức", "leave", "phép", "wfh"]):
+                f_name_lower = str(f.get("name") or "").lower()
+                if not any(k in f_name_lower for k in ["employee", "tên", "nhân viên", "department", "phòng", "bộ phận", "position", "chức", "reason", "lý do"]):
+                    if isinstance(f_val, str) and f_val.strip():
+                        leave_type_val = f_val.strip()
+                    elif isinstance(f_val, dict):
+                        leave_type_val = f_val.get("value") or f_val.get("text") or f_val.get("name") or str(f_val)
+                    elif isinstance(f_val, list) and len(f_val) > 0:
+                        first_val = f_val[0]
+                        if isinstance(first_val, dict):
+                            leave_type_val = first_val.get("value") or first_val.get("text") or first_val.get("name") or str(first_val)
                         else:
-                            leave_type_val = f_val
-                    except:
-                        leave_type_val = f_val
-                elif isinstance(f_val, dict):
-                    leave_type_val = f_val.get("value") or f_val.get("name") or str(f_val)
-                elif isinstance(f_val, list) and len(f_val) > 0:
-                    first_val = f_val[0]
-                    if isinstance(first_val, dict):
-                        leave_type_val = first_val.get("value") or first_val.get("name") or str(first_val)
-                    else:
-                        leave_type_val = str(first_val)
+                            leave_type_val = str(first_val)
                 
         if not start_date_raw:
             start_time_epoch = inst_details.get("start_time")
