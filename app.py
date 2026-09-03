@@ -302,11 +302,22 @@ def process_lark_adjustment(employee_name, date_str, leave_type, note):
     # Explicit mapping dict between Lark names/nicknames and KimQ database names
     lark_to_kimq_map = {
         "zane": "Phạm Tấn Thịnh",
+        "pham tan thinh": "Phạm Tấn Thịnh",
+        "thinh": "Phạm Tấn Thịnh",
         "leon": "Nguyễn Chí Linh",
+        "nguyen chi linh": "Nguyễn Chí Linh",
+        "linh": "Nguyễn Chí Linh",
         "david": "Trần Duy Sơn",
+        "tran duy son": "Trần Duy Sơn",
+        "son": "Trần Duy Sơn",
         "tommy": "Đặng Xuân Hoàng",
+        "dang xuan hoang": "Đặng Xuân Hoàng",
+        "hoang": "Đặng Xuân Hoàng",
         "quyn": "Lê Văn Quyn",
-        "bugi": "Phan Nhật Bảo"
+        "le van quyn": "Lê Văn Quyn",
+        "bugi": "Phan Nhật Bảo",
+        "phan nhat bao": "Phan Nhật Bảo",
+        "bao": "Phan Nhật Bảo",
     }
     
     matched_db_name = None
@@ -341,6 +352,16 @@ def process_lark_adjustment(employee_name, date_str, leave_type, note):
             all_emps = Employee.query.all()
         for e in all_emps:
             if e.alias_id and remove_accents(e.alias_id) == name_clean_no_accent:
+                emp = e
+                break
+
+    if not emp:
+        # Fallback to substring matching across employee names
+        if 'all_emps' not in locals():
+            all_emps = Employee.query.all()
+        for e in all_emps:
+            e_no_acc = remove_accents(e.name)
+            if (len(name_clean_no_accent) >= 3 and name_clean_no_accent in e_no_acc) or (len(e_no_acc) >= 3 and e_no_acc in name_clean_no_accent):
                 emp = e
                 break
                 
@@ -436,13 +457,23 @@ def lark_webhook():
         logging.info(f"Detected event_type: {event_type}")
 
         if event_type and ("approval.instance.updated" in str(event_type) or "approval.instance.status_updated" in str(event_type) or "approval" in str(event_type).lower()):
-            instance_code = event.get("instance_code") or data.get("instance_code")
-            status = event.get("status") or data.get("status")
+            instance_code = (
+                event.get("instance_code") or 
+                event.get("code") or 
+                event.get("instance", {}).get("code") or 
+                data.get("instance_code") or 
+                data.get("code")
+            )
+            status = (
+                event.get("status") or 
+                event.get("instance", {}).get("status") or 
+                data.get("status") or ""
+            )
             
             lark_app_id = os.getenv("LARK_APP_ID")
             lark_app_secret = os.getenv("LARK_APP_SECRET")
             
-            if status == "APPROVED" and instance_code and lark_app_id and lark_app_secret:
+            if str(status).upper() == "APPROVED" and instance_code and lark_app_id and lark_app_secret:
                 # Process in a background thread to prevent Lark request timeouts
                 def process_lark_approval_bg():
                     with app.app_context():
@@ -513,7 +544,7 @@ def lark_webhook():
                                     tz_offset = int(f_val.get("timezoneOffset", -420))
                                 elif f_type == "date" and isinstance(f_val, str):
                                     start_date_raw = f_val
-                                elif f_type in ["select", "radio", "checkbox", "input", "widget"]:
+                                elif f_type in ["select", "radio", "checkbox", "input", "widget", "radioV2", "selectV2", "checkboxV2", "textarea"]:
                                     if isinstance(f_val, str):
                                         try:
                                             val_json = json.loads(f_val)
@@ -2061,8 +2092,9 @@ def admin_sync_lark_approvals():
         num_days = calendar.monthrange(year, month)[1]
         
         # Start and end timestamps in milliseconds (UTC+7 aligned roughly to UTC for Lark query)
-        start_dt = datetime(year, month, 1) - timedelta(days=1)
-        end_dt = datetime(year, month, num_days, 23, 59, 59) + timedelta(days=1)
+        # Widen the window by 60 days prior and 35 days ahead so any advance leave is captured
+        start_dt = datetime(year, month, 1) - timedelta(days=60)
+        end_dt = datetime(year, month, num_days, 23, 59, 59) + timedelta(days=35)
         start_ms = str(int(start_dt.timestamp() * 1000))
         end_ms = str(int(end_dt.timestamp() * 1000))
         
@@ -2073,29 +2105,46 @@ def admin_sync_lark_approvals():
         if not tenant_token:
             return jsonify({"status": "error", "message": "Không thể kết nối API Lark Suite để lấy Token"}), 500
             
-        # 2. Query instances for the main Leave/WFH Approval form directly
+        # 2. Query instances for the main Leave/WFH Approval form directly with pagination
         app_code = "0E4F14E9-F5E3-4939-8DE8-8294872C5D4E"
         headers = {"Authorization": f"Bearer {tenant_token}", "Content-Type": "application/json"}
-        
         query_url = "https://open.larksuite.com/open-apis/approval/v4/instances/query"
-        payload = {
-            "approval_code": app_code,
-            "start_time": start_ms,
-            "end_time": end_ms
-        }
-        query_res = requests.post(query_url, headers=headers, json=payload, timeout=10)
-        q_json = query_res.json()
         
-        if q_json.get("code") != 0:
-            err_msg = q_json.get("msg", "")
-            if "permission_violations" in str(q_json) or "scope" in err_msg.lower() or q_json.get("code") == 99991672:
-                return jsonify({
-                    "status": "error", 
-                    "message": "Ứng dụng Lark của bạn chưa được cấp quyền 'approval:approval.list:readonly' (Xem danh sách đơn duyệt). Vui lòng vào Lark Developer Console -> Permission Administration, cấp quyền này cho ứng dụng và phát hành phiên bản mới để đồng bộ."
-                }), 400
-            return jsonify({"status": "error", "message": f"Lỗi truy vấn đơn từ Lark: {err_msg}"}), 400
+        instances = []
+        has_more = True
+        page_token = None
+        
+        while has_more:
+            payload = {
+                "approval_code": app_code,
+                "start_time": start_ms,
+                "end_time": end_ms,
+                "page_size": 100
+            }
+            if page_token:
+                payload["page_token"] = page_token
+                
+            query_res = requests.post(query_url, headers=headers, json=payload, timeout=15)
+            q_json = query_res.json()
             
-        instances = q_json.get("data", {}).get("instance_list", [])
+            if q_json.get("code") != 0:
+                err_msg = q_json.get("msg", "")
+                if "permission_violations" in str(q_json) or "scope" in err_msg.lower() or q_json.get("code") == 99991672:
+                    return jsonify({
+                        "status": "error", 
+                        "message": "Ứng dụng Lark của bạn chưa được cấp quyền 'approval:approval.list:readonly' (Xem danh sách đơn duyệt). Vui lòng vào Lark Developer Console -> Permission Administration, cấp quyền này cho ứng dụng và phát hành phiên bản mới để đồng bộ."
+                    }), 400
+                logging.error(f"Lỗi truy vấn đơn từ Lark: {err_msg}")
+                break
+                
+            data_field = q_json.get("data", {})
+            batch = data_field.get("instance_list", [])
+            instances.extend(batch)
+            
+            has_more = data_field.get("has_more", False)
+            page_token = data_field.get("page_token")
+            if not page_token or not has_more:
+                break
         
         synced_count = 0
         synced_items = []
@@ -2103,7 +2152,7 @@ def admin_sync_lark_approvals():
         for inst in instances:
             instance_data = inst.get("instance", {})
             status = instance_data.get("status", "")
-            if status.upper() != "APPROVED":
+            if str(status).upper() != "APPROVED":
                 continue
                 
             code = instance_data.get("code")
@@ -2155,7 +2204,7 @@ def admin_sync_lark_approvals():
                     tz_offset = int(f_val.get("timezoneOffset", -420))
                 elif f_type == "date" and isinstance(f_val, str):
                     start_date_raw = f_val
-                elif f_type in ["select", "radio", "checkbox", "input", "widget"]:
+                elif f_type in ["select", "radio", "checkbox", "input", "widget", "radioV2", "selectV2", "checkboxV2", "textarea"]:
                     if isinstance(f_val, str):
                         try:
                             val_json = json.loads(f_val)
@@ -2183,25 +2232,23 @@ def admin_sync_lark_approvals():
                     
             if start_date_raw:
                 start_date = parse_lark_date(start_date_raw, tz_offset)
-                start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                start_dt_inst = datetime.strptime(start_date, "%Y-%m-%d")
                 num_days = max(1, int(interval_val))
                 
-                # Check if curr_date is in the requested month
+                # Apply leave adjustments for all valid dates in this approved application
                 for i in range(num_days):
-                    curr_date_dt = start_dt + timedelta(days=i)
+                    curr_date_dt = start_dt_inst + timedelta(days=i)
                     curr_date = curr_date_dt.strftime("%Y-%m-%d")
                     
-                    # Only apply if the date actually falls within the target YYYY-MM
-                    if curr_date.startswith(month_str):
-                        success, msg = process_lark_adjustment(
-                            user_name,
-                            curr_date,
-                            leave_type_val,
-                            f"Lark Sync: {inst_details.get('approval_name', 'Nghỉ phép/WFH')}"
-                        )
-                        if success:
-                            synced_count += 1
-                            synced_items.append(f"{user_name} ({curr_date})")
+                    success, msg = process_lark_adjustment(
+                        user_name,
+                        curr_date,
+                        leave_type_val,
+                        f"Lark Sync: {inst_details.get('approval_name', 'Nghỉ phép/WFH')}"
+                    )
+                    if success:
+                        synced_count += 1
+                        synced_items.append(f"{user_name} ({curr_date})")
                                 
         return jsonify({
             "status": "success",

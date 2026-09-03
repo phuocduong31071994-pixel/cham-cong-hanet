@@ -1389,7 +1389,11 @@
                             body: JSON.stringify({ month: monthParam })
                         });
                         const json = await response.json();
-                        alert(json.message || "Kết quả đồng bộ.");
+                        let alertMsg = json.message || "Kết quả đồng bộ.";
+                        if (json.synced_items && json.synced_items.length > 0) {
+                            alertMsg += "\n\nDanh sách đã cập nhật:\n• " + json.synced_items.join("\n• ");
+                        }
+                        alert(alertMsg);
                         if (response.ok && json.status === 'success') {
                             loadData(); // reload feed
                         }
