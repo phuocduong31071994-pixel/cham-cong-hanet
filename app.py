@@ -933,9 +933,8 @@ def get_checkins():
         except ValueError:
             return jsonify({"status": "error", "message": "Định dạng ngày tháng không hợp lệ!"}), 400
 
-        # Perform automatic sync for this range from Hanet and Lark
+        # Perform automatic sync for this range from Hanet
         sync_hanet_history_for_range(start_date, end_date)
-        sync_lark_approvals_auto(start_date[:7] if start_date else None)
 
         # Anyone can view active check-ins (public access) - filtered to active employees only
         active_emp_ids = [e.person_id for e in Employee.query.all()]
@@ -2328,67 +2327,49 @@ def sync_lark_approvals_internal(month_str=None, force=False):
                     
     return synced_count, synced_items, None
 
-LAST_LARK_AUTO_SYNC = 0
-
 def sync_lark_approvals_auto(month_str=None):
-    """
-    Triggers an automatic background sync of Lark approvals when users visit the app.
-    Has a 15-minute cooldown to prevent excess load and conserve API quota.
-    """
-    global LAST_LARK_AUTO_SYNC
-    now = time.time()
-    if now - LAST_LARK_AUTO_SYNC < 900: # 15-minute cooldown
-        return
-    LAST_LARK_AUTO_SYNC = now
-    
-    def run_auto_sync():
-        with app.app_context():
-            try:
-                count, items, err = sync_lark_approvals_internal(month_str, force=False)
-                if count > 0:
-                    logging.info(f"Auto-synced {count} new Lark approvals in background: {items}")
-            except Exception as e:
-                logging.error(f"Error in auto-syncing Lark approvals: {e}")
-                
-    threading.Thread(target=run_auto_sync, daemon=True).start()
+    # Disabled by policy: API calls are strictly restricted to 2 scheduled runs per day
+    pass
 
 def start_lark_periodic_sync():
     """
-    Background worker that runs every 30 minutes with a DB lock across all Gunicorn workers
-    to automatically fetch new approvals from Lark without exceeding API quota.
+    Background worker that runs exactly 2 times per day (12:00 and 18:30 Vietnam time UTC+7)
+    to sync approvals from Lark Suite while strictly conserving API quota.
     """
     def periodic_worker():
-        time.sleep(60) # Initial 1-minute delay after startup
+        time.sleep(30) # Delay after startup
         while True:
             try:
                 with app.app_context():
-                    now_ts = time.time()
-                    setting = Setting.query.filter_by(key='last_global_lark_sync').first()
-                    should_sync = False
-                    if setting:
-                        try:
-                            last_ts = float(setting.value)
-                            if now_ts - last_ts >= 1800: # 30-minute global interval
-                                setting.value = str(now_ts)
-                                db.session.commit()
-                                should_sync = True
-                        except ValueError:
-                            setting.value = str(now_ts)
-                            db.session.commit()
-                            should_sync = True
-                    else:
-                        db.session.add(Setting(key='last_global_lark_sync', value=str(now_ts)))
-                        db.session.commit()
-                        should_sync = True
+                    now_vn = datetime.now(timezone(timedelta(hours=7)))
+                    today_str = now_vn.strftime('%Y-%m-%d')
+                    hour = now_vn.hour
+                    minute = now_vn.minute
+                    
+                    # Slot 1: Noon (12:00 - 18:29)
+                    # Slot 2: Evening (18:30 - 23:59)
+                    slot_key = None
+                    if 12 <= hour < 18 or (hour == 18 and minute < 30):
+                        slot_key = f"lark_daily_sync_{today_str}_12h"
+                    elif hour > 18 or (hour == 18 and minute >= 30):
+                        slot_key = f"lark_daily_sync_{today_str}_18h30"
                         
-                    if should_sync:
-                        count, items, err = sync_lark_approvals_internal(force=False)
-                        if count > 0:
-                            logging.info(f"Periodic auto-synced {count} new Lark approvals: {items}")
+                    if slot_key:
+                        setting = Setting.query.filter_by(key=slot_key).first()
+                        if not setting:
+                            # Record slot as processed immediately across all workers
+                            db.session.add(Setting(key=slot_key, value=now_vn.isoformat()))
+                            db.session.commit()
+                            
+                            logging.info(f"Triggering scheduled daily Lark sync for slot: {slot_key}")
+                            count, items, err = sync_lark_approvals_internal(force=False)
+                            if count > 0:
+                                logging.info(f"Daily sync ({slot_key}) updated {count} approvals: {items}")
             except Exception as e:
                 db.session.rollback()
-                logging.error(f"Periodic Lark sync error: {e}")
-            time.sleep(600) # Check interval (only runs if 30 minutes elapsed)
+                logging.error(f"Daily Lark sync error: {e}")
+                
+            time.sleep(60) # Check clock every 60 seconds
             
     threading.Thread(target=periodic_worker, daemon=True).start()
 
