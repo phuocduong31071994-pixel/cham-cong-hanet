@@ -192,6 +192,14 @@ class AttendanceAdjustment(db.Model):
             "note": self.note
         }
 
+class LarkSyncedInstance(db.Model):
+    __tablename__ = 'lark_synced_instances'
+    instance_code = db.Column(db.String(100), primary_key=True)
+    synced_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None), nullable=False)
+
+# In-memory cache for Lark user names to prevent redundant API queries
+LARK_USER_CACHE = {}
+
 # Seed dummy data if empty
 def seed_data():
     # Mock seeding disabled
@@ -576,6 +584,14 @@ def lark_webhook():
                                         leave_type_val,
                                         f"Lark duyệt: {inst_data.get('approval_name', 'Nghỉ phép')}"
                                     )
+                                    
+                                # Mark as synced
+                                try:
+                                    if not LarkSyncedInstance.query.filter_by(instance_code=instance_code).first():
+                                        db.session.add(LarkSyncedInstance(instance_code=instance_code))
+                                        db.session.commit()
+                                except Exception:
+                                    db.session.rollback()
                         except Exception as bg_err:
                             logging.error(f"Error in process_lark_approval_bg: {bg_err}")
                             
@@ -2116,7 +2132,7 @@ def admin_export_timesheet():
         return jsonify({"status": "error", "message": f"Export failed: {str(e)}"}), 500
 
 # Reusable function for syncing approvals from Lark Suite
-def sync_lark_approvals_internal(month_str=None):
+def sync_lark_approvals_internal(month_str=None, force=False):
     import json
     import calendar
     
@@ -2148,6 +2164,14 @@ def sync_lark_approvals_internal(month_str=None):
     if not tenant_token:
         return 0, [], "Không thể kết nối API Lark Suite để lấy Token"
         
+    # Load set of already synced instance codes to skip re-fetching details
+    synced_codes = set()
+    if not force:
+        try:
+            synced_codes = set(r[0] for r in db.session.query(LarkSyncedInstance.instance_code).all())
+        except Exception as e:
+            logging.error(f"Error querying LarkSyncedInstance: {e}")
+
     # 2. Query instances for the main Leave/WFH Approval form directly with pagination
     app_code = "0E4F14E9-F5E3-4939-8DE8-8294872C5D4E"
     headers = {"Authorization": f"Bearer {tenant_token}", "Content-Type": "application/json"}
@@ -2196,6 +2220,12 @@ def sync_lark_approvals_internal(month_str=None):
             continue
             
         code = instance_data.get("code")
+        if not code:
+            continue
+            
+        # Optimization: Skip already synced instances to avoid burning API quota!
+        if not force and code in synced_codes:
+            continue
         
         # Get instance details
         inst_url = f"https://open.larksuite.com/open-apis/approval/v4/instances/{code}"
@@ -2209,13 +2239,17 @@ def sync_lark_approvals_internal(month_str=None):
         except Exception as e:
             logging.error(f"Error parsing form fields: {e}")
 
-        user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}?user_id_type=user_id"
-        user_name = None
-        try:
-            user_res = requests.get(user_url, headers=headers, timeout=10)
-            user_name = user_res.json().get("data", {}).get("user", {}).get("name")
-        except Exception as e:
-            logging.error(f"Error fetching user name: {e}")
+        # Check memory cache for user_id to save contact API calls
+        user_name = LARK_USER_CACHE.get(user_id)
+        if not user_name:
+            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}?user_id_type=user_id"
+            try:
+                user_res = requests.get(user_url, headers=headers, timeout=10)
+                user_name = user_res.json().get("data", {}).get("user", {}).get("name")
+                if user_name:
+                    LARK_USER_CACHE[user_id] = user_name
+            except Exception as e:
+                logging.error(f"Error fetching user name: {e}")
             
         if not user_name:
             # Resilient fallback: parse form fields to find name
@@ -2282,6 +2316,15 @@ def sync_lark_approvals_internal(month_str=None):
                 if success:
                     synced_count += 1
                     synced_items.append(f"{user_name} ({curr_date})")
+
+            # Mark this instance as synced in database so it is never re-queried
+            try:
+                if not LarkSyncedInstance.query.filter_by(instance_code=code).first():
+                    db.session.add(LarkSyncedInstance(instance_code=code))
+                    db.session.commit()
+                    synced_codes.add(code)
+            except Exception:
+                db.session.rollback()
                     
     return synced_count, synced_items, None
 
@@ -2289,21 +2332,21 @@ LAST_LARK_AUTO_SYNC = 0
 
 def sync_lark_approvals_auto(month_str=None):
     """
-    Triggers an automatic background sync of Lark approvals whenever users visit the app.
-    Has a 2-minute cooldown to prevent excess load.
+    Triggers an automatic background sync of Lark approvals when users visit the app.
+    Has a 15-minute cooldown to prevent excess load and conserve API quota.
     """
     global LAST_LARK_AUTO_SYNC
     now = time.time()
-    if now - LAST_LARK_AUTO_SYNC < 120: # 2-minute cooldown
+    if now - LAST_LARK_AUTO_SYNC < 900: # 15-minute cooldown
         return
     LAST_LARK_AUTO_SYNC = now
     
     def run_auto_sync():
         with app.app_context():
             try:
-                count, items, err = sync_lark_approvals_internal(month_str)
+                count, items, err = sync_lark_approvals_internal(month_str, force=False)
                 if count > 0:
-                    logging.info(f"Auto-synced {count} Lark approvals in background: {items}")
+                    logging.info(f"Auto-synced {count} new Lark approvals in background: {items}")
             except Exception as e:
                 logging.error(f"Error in auto-syncing Lark approvals: {e}")
                 
@@ -2311,19 +2354,41 @@ def sync_lark_approvals_auto(month_str=None):
 
 def start_lark_periodic_sync():
     """
-    Background worker that runs every 10 minutes to automatically fetch approvals from Lark.
+    Background worker that runs every 30 minutes with a DB lock across all Gunicorn workers
+    to automatically fetch new approvals from Lark without exceeding API quota.
     """
     def periodic_worker():
-        time.sleep(30) # Initial 30s delay after startup
+        time.sleep(60) # Initial 1-minute delay after startup
         while True:
             try:
                 with app.app_context():
-                    count, items, err = sync_lark_approvals_internal()
-                    if count > 0:
-                        logging.info(f"Periodic auto-synced {count} Lark approvals: {items}")
+                    now_ts = time.time()
+                    setting = Setting.query.filter_by(key='last_global_lark_sync').first()
+                    should_sync = False
+                    if setting:
+                        try:
+                            last_ts = float(setting.value)
+                            if now_ts - last_ts >= 1800: # 30-minute global interval
+                                setting.value = str(now_ts)
+                                db.session.commit()
+                                should_sync = True
+                        except ValueError:
+                            setting.value = str(now_ts)
+                            db.session.commit()
+                            should_sync = True
+                    else:
+                        db.session.add(Setting(key='last_global_lark_sync', value=str(now_ts)))
+                        db.session.commit()
+                        should_sync = True
+                        
+                    if should_sync:
+                        count, items, err = sync_lark_approvals_internal(force=False)
+                        if count > 0:
+                            logging.info(f"Periodic auto-synced {count} new Lark approvals: {items}")
             except Exception as e:
+                db.session.rollback()
                 logging.error(f"Periodic Lark sync error: {e}")
-            time.sleep(600) # Every 10 minutes
+            time.sleep(600) # Check interval (only runs if 30 minutes elapsed)
             
     threading.Thread(target=periodic_worker, daemon=True).start()
 
@@ -2339,7 +2404,7 @@ def admin_sync_lark_approvals():
     try:
         data = request.json or {}
         month_str = data.get('month')
-        count, items, err = sync_lark_approvals_internal(month_str)
+        count, items, err = sync_lark_approvals_internal(month_str, force=True)
         if err:
             return jsonify({"status": "error", "message": err}), 400
             
