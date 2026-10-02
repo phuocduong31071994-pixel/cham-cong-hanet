@@ -2479,13 +2479,12 @@ def start_lark_periodic_sync():
     to sync approvals from Lark Suite while strictly conserving API quota.
     """
     def periodic_worker():
-        time.sleep(15) # Delay after startup
-        # One-time startup re-sync for September 2026 to ensure half-day P/2 leaves are properly recorded
+        time.sleep(30) # Delay after startup
+        # One-time startup heal for Pham Tan Thinh 2026-09-14
         try:
             with app.app_context():
-                setting_key = "heal_half_day_p2_sep2026_v1"
+                setting_key = "heal_half_day_p2_thinh_v1"
                 if not Setting.query.filter_by(key=setting_key).first():
-                    logging.info("Running one-time Lark re-sync for P/2 half-day leaves...")
                     thinh_emp = Employee.query.filter(Employee.name.ilike('%Phạm Tấn Thịnh%')).first()
                     if thinh_emp:
                         thinh_adj = AttendanceAdjustment.query.filter_by(person_id=thinh_emp.person_id, date='2026-09-14').first()
@@ -2495,10 +2494,8 @@ def start_lark_periodic_sync():
                             thinh_adj.check_out = None
                             thinh_adj.note = 'Lark duyệt: Annual leave - Off chiều 14/9 (0.5 ngày)'
                             db.session.commit()
-                    sync_lark_approvals_internal(month_str='2026-09', force=True)
                     db.session.add(Setting(key=setting_key, value="done"))
                     db.session.commit()
-                    logging.info("Completed one-time Lark re-sync for P/2 half-day leaves.")
         except Exception as heal_ex:
             db.session.rollback()
             logging.error(f"Error in startup P/2 healing: {heal_ex}")
