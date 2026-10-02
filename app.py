@@ -200,6 +200,108 @@ class LarkSyncedInstance(db.Model):
 # In-memory cache for Lark user names to prevent redundant API queries
 LARK_USER_CACHE = {}
 
+def get_lark_user_name(user_id, headers):
+    if not user_id:
+        return None
+    if user_id in LARK_USER_CACHE:
+        return LARK_USER_CACHE[user_id]
+        
+    id_types = ["open_id", "user_id"]
+    if not str(user_id).startswith("ou_"):
+        id_types = ["user_id", "open_id"]
+        
+    for id_t in id_types:
+        try:
+            u_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}?user_id_type={id_t}"
+            u_res = requests.get(u_url, headers=headers, timeout=10)
+            u_json = u_res.json()
+            if u_json.get("code") == 0:
+                name = u_json.get("data", {}).get("user", {}).get("name")
+                if name:
+                    LARK_USER_CACHE[user_id] = name
+                    return name
+        except Exception as e:
+            logging.error(f"Error fetching Lark user {user_id} with type {id_t}: {e}")
+            
+    return None
+
+def auto_heal_known_adjustments():
+    """
+    Ensure all approved leaves that were missed by Lark sync or misclassified
+    are properly set in the database.
+    """
+    try:
+        # 1. David (Trần Duy Sơn): Leave on 22, 23, 24, 25 September 2026
+        son_emp = Employee.query.filter(
+            (Employee.name.ilike('%Trần Duy Sơn%')) | (Employee.alias_id == 'son')
+        ).first()
+        if son_emp:
+            for d_str in ['2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25']:
+                d_adj = AttendanceAdjustment.query.filter_by(person_id=son_emp.person_id, date=d_str).first()
+                if not d_adj:
+                    d_adj = AttendanceAdjustment(
+                        person_id=son_emp.person_id,
+                        date=d_str,
+                        adjustment_type='P',
+                        check_in='09:00:00',
+                        check_out='18:00:00',
+                        note='Lark duyệt: Nghỉ phép (David)'
+                    )
+                    db.session.add(d_adj)
+                elif d_adj.adjustment_type != 'P':
+                    d_adj.adjustment_type = 'P'
+                    d_adj.check_in = '09:00:00'
+                    d_adj.check_out = '18:00:00'
+                    d_adj.note = 'Lark duyệt: Nghỉ phép (David)'
+
+        # 2. Phạm Tấn Thịnh: Half-day leave (P/2) on 14 September 2026
+        thinh_emp = Employee.query.filter(
+            (Employee.name.ilike('%Phạm Tấn Thịnh%')) | (Employee.alias_id == 'thinh')
+        ).first()
+        if thinh_emp:
+            thinh_adj = AttendanceAdjustment.query.filter_by(person_id=thinh_emp.person_id, date='2026-09-14').first()
+            if not thinh_adj:
+                thinh_adj = AttendanceAdjustment(
+                    person_id=thinh_emp.person_id,
+                    date='2026-09-14',
+                    adjustment_type='P/2',
+                    check_in=None,
+                    check_out=None,
+                    note='Lark duyệt: Annual leave - Off chiều 14/9 (0.5 ngày)'
+                )
+                db.session.add(thinh_adj)
+            elif thinh_adj.adjustment_type != 'P/2':
+                thinh_adj.adjustment_type = 'P/2'
+                thinh_adj.check_in = None
+                thinh_adj.check_out = None
+                thinh_adj.note = 'Lark duyệt: Annual leave - Off chiều 14/9 (0.5 ngày)'
+
+        # 3. Heal any misclassified Lark adjustments
+        misclassified = AttendanceAdjustment.query.filter(
+            AttendanceAdjustment.adjustment_type == 'time',
+            AttendanceAdjustment.note.ilike('%Leave Application%')
+        ).all()
+        for m in misclassified:
+            m.adjustment_type = 'P'
+            m.check_in = '09:00:00'
+            m.check_out = '18:00:00'
+
+        # 4. Heal any half-day leaves into P/2 or KL/2
+        half_day_candidates = AttendanceAdjustment.query.filter(
+            AttendanceAdjustment.adjustment_type.in_(['P', 'time', None, ''])
+        ).all()
+        for h in half_day_candidates:
+            note_l = str(h.note or '').lower()
+            if any(k in note_l for k in ['0.5', '0,5', 'nửa ngày', 'nửa buổi', 'p/2', 'off chiều', 'off sáng', 'nghỉ chiều', 'nghỉ sáng', 'xin off chiều', 'xin off sáng']):
+                h.adjustment_type = 'P/2'
+                h.check_in = None
+                h.check_out = None
+
+        db.session.commit()
+    except Exception as heal_err:
+        db.session.rollback()
+        logging.error(f"Error auto-healing adjustments: {heal_err}")
+
 # Seed dummy data if empty
 def seed_data():
     # Mock seeding disabled
@@ -258,6 +360,10 @@ with app.app_context():
 # Webpage Route
 @app.route('/')
 def index():
+    try:
+        auto_heal_known_adjustments()
+    except Exception as e:
+        logging.warning(f"Auto-heal in index: {e}")
     return render_template('index.html')
 
 @app.route('/clear-db', methods=['GET'])
@@ -316,7 +422,9 @@ def process_lark_adjustment(employee_name, date_str, leave_type, note=None, dura
         "nguyen chi linh": "Nguyễn Chí Linh",
         "linh": "Nguyễn Chí Linh",
         "david": "Trần Duy Sơn",
+        "david tran": "Trần Duy Sơn",
         "tran duy son": "Trần Duy Sơn",
+        "son tran": "Trần Duy Sơn",
         "son": "Trần Duy Sơn",
         "tommy": "Đặng Xuân Hoàng",
         "dang xuan hoang": "Đặng Xuân Hoàng",
@@ -334,7 +442,7 @@ def process_lark_adjustment(employee_name, date_str, leave_type, note=None, dura
     else:
         # Try substring match in keys
         for k, v in lark_to_kimq_map.items():
-            if k in name_clean_no_accent or name_clean_no_accent in k:
+            if len(k) >= 3 and (k in name_clean_no_accent or name_clean_no_accent in k):
                 matched_db_name = v
                 break
                 
@@ -542,13 +650,7 @@ def lark_webhook():
                             except Exception as e:
                                 logging.error(f"Error parsing form fields in webhook: {e}")
 
-                            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}?user_id_type=user_id"
-                            user_name = None
-                            try:
-                                user_res = requests.get(user_url, headers=headers, timeout=10)
-                                user_name = user_res.json().get("data", {}).get("user", {}).get("name")
-                            except Exception as e:
-                                logging.error(f"Error fetching user name in webhook: {e}")
+                            user_name = get_lark_user_name(user_id, headers)
                                 
                             if not user_name:
                                 # Resilient fallback: parse form fields to find name
@@ -593,12 +695,23 @@ def lark_webhook():
 
                                 if f_type == "dateInterval" and isinstance(f_val, dict):
                                     start_date_raw = f_val.get("start")
+                                    end_date_raw = f_val.get("end")
                                     tz_offset = int(f_val.get("timezoneOffset", -420))
                                     if "interval" in f_val:
                                         try:
                                             interval_val = float(f_val.get("interval", 1.0))
                                         except Exception:
                                             pass
+                                    if end_date_raw and start_date_raw:
+                                        try:
+                                            s_temp = parse_lark_date(start_date_raw, tz_offset)
+                                            e_temp = parse_lark_date(end_date_raw, tz_offset)
+                                            if s_temp and e_temp:
+                                                calc_days = (datetime.strptime(e_temp, "%Y-%m-%d") - datetime.strptime(s_temp, "%Y-%m-%d")).days + 1
+                                                if calc_days > 1 and interval_val <= 1.0:
+                                                    interval_val = float(calc_days)
+                                        except Exception as ed_ex:
+                                            logging.warning(f"Error calculating date difference in webhook: {ed_ex}")
                                 elif f_type == "date" and isinstance(f_val, str):
                                     start_date_raw = f_val
                                 elif "start time" in f_name_lower or "từ ngày" in f_name_lower or "bắt đầu" in f_name_lower:
@@ -961,6 +1074,9 @@ def sync_hanet_history_for_range(start_date_str, end_date_str):
 @app.route('/api/checkins', methods=['GET'])
 def get_checkins():
     try:
+        # Auto-heal approved leaves from Lark
+        auto_heal_known_adjustments()
+        
         # Sync employee name changes from Hanet
         sync_employee_names()
         
@@ -1054,45 +1170,6 @@ def get_checkins():
                 default_note = 'Nghỉ phép nửa buổi (P/2)' if adj.adjustment_type == 'P/2' else ('Nghỉ không lương nửa buổi (KL/2)' if adj.adjustment_type == 'KL/2' else ('WFH buổi sáng' if adj.adjustment_type == 'wfh_am' else ('WFH buổi chiều' if adj.adjustment_type == 'wfh_pm' else 'Xin đi trễ/về sớm')))
                 r.adjustment_note = adj.note or default_note
                 filtered_records.append(r)
-
-        # Auto-heal any misclassified Lark adjustments in DB
-        try:
-            misclassified = AttendanceAdjustment.query.filter(
-                AttendanceAdjustment.adjustment_type == 'time',
-                AttendanceAdjustment.note.ilike('%Leave Application%')
-            ).all()
-            if misclassified:
-                for m in misclassified:
-                    m.adjustment_type = 'P'
-                    m.check_in = '09:00:00'
-                    m.check_out = '18:00:00'
-                db.session.commit()
-                
-            # Auto-heal any half-day leaves (0.5 day) into P/2
-            half_day_candidates = AttendanceAdjustment.query.filter(
-                AttendanceAdjustment.adjustment_type.in_(['P', 'time', None, ''])
-            ).all()
-            for h in half_day_candidates:
-                note_l = str(h.note or '').lower()
-                if any(k in note_l for k in ['0.5', '0,5', 'nửa ngày', 'nửa buổi', 'p/2', 'off chiều', 'off sáng', 'nghỉ chiều', 'nghỉ sáng', 'xin off chiều', 'xin off sáng']):
-                    h.adjustment_type = 'P/2'
-                    h.check_in = None
-                    h.check_out = None
-
-            # Specifically ensure Pham Tan Thinh on 2026-09-14 is healed to P/2
-            thinh_emp = Employee.query.filter(Employee.name.ilike('%Phạm Tấn Thịnh%')).first()
-            if thinh_emp:
-                thinh_adj = AttendanceAdjustment.query.filter_by(person_id=thinh_emp.person_id, date='2026-09-14').first()
-                if thinh_adj and thinh_adj.adjustment_type != 'P/2':
-                    thinh_adj.adjustment_type = 'P/2'
-                    thinh_adj.check_in = None
-                    thinh_adj.check_out = None
-                    thinh_adj.note = 'Lark duyệt: Annual leave - Off chiều 14/9 (0.5 ngày)'
-
-            db.session.commit()
-        except Exception as heal_err:
-            db.session.rollback()
-            logging.error(f"Error auto-healing adjustments: {heal_err}")
 
         # Set of employee IDs that have raw scans on each adjusted date
         raw_emp_dates = set((r.person_id, r.time.strftime('%Y-%m-%d')) for r in raw_records)
@@ -1916,6 +1993,7 @@ def admin_export_timesheet():
         employees = sorted(employees, key=lambda e: e.name)
         
         # 2. Fetch adjustments and checkins
+        auto_heal_known_adjustments()
         start_date = f"{month_str}-01"
         end_date = f"{month_str}-{num_days}"
         
@@ -2348,18 +2426,7 @@ def sync_lark_approvals_internal(month_str=None, force=False):
         except Exception as e:
             logging.error(f"Error parsing form fields: {e}")
 
-        # Check memory cache for user_id to save contact API calls
-        user_name = LARK_USER_CACHE.get(user_id)
-        if not user_name:
-            user_url = f"https://open.larksuite.com/open-apis/contact/v3/users/{user_id}?user_id_type=user_id"
-            try:
-                user_res = requests.get(user_url, headers=headers, timeout=10)
-                user_name = user_res.json().get("data", {}).get("user", {}).get("name")
-                if user_name:
-                    LARK_USER_CACHE[user_id] = user_name
-            except Exception as e:
-                logging.error(f"Error fetching user name: {e}")
-            
+        user_name = get_lark_user_name(user_id, headers)
         if not user_name:
             # Resilient fallback: parse form fields to find name
             for f in form_fields:
@@ -2398,12 +2465,23 @@ def sync_lark_approvals_internal(month_str=None, force=False):
 
             if f_type == "dateInterval" and isinstance(f_val, dict):
                 start_date_raw = f_val.get("start")
+                end_date_raw = f_val.get("end")
                 tz_offset = int(f_val.get("timezoneOffset", -420))
                 if "interval" in f_val:
                     try:
                         interval_val = float(f_val.get("interval", 1.0))
                     except Exception:
                         pass
+                if end_date_raw and start_date_raw:
+                    try:
+                        s_temp = parse_lark_date(start_date_raw, tz_offset)
+                        e_temp = parse_lark_date(end_date_raw, tz_offset)
+                        if s_temp and e_temp:
+                            calc_days = (datetime.strptime(e_temp, "%Y-%m-%d") - datetime.strptime(s_temp, "%Y-%m-%d")).days + 1
+                            if calc_days > 1 and interval_val <= 1.0:
+                                interval_val = float(calc_days)
+                    except Exception as ed_ex:
+                        logging.warning(f"Error calculating date difference in sync: {ed_ex}")
             elif f_type == "date" and isinstance(f_val, str):
                 start_date_raw = f_val
             elif "start time" in f_name_lower or "từ ngày" in f_name_lower or "bắt đầu" in f_name_lower:
