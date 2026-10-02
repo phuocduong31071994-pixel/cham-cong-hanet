@@ -32,9 +32,11 @@ HANET_PLACE_ID = os.getenv('HANET_PLACE_ID', '997723')
 # Configure Database: Use PostgreSQL on Railway if available, otherwise fallback to SQLite locally
 DATABASE_URL = os.getenv('DATABASE_URL')
 if DATABASE_URL:
-    # SQL Alchemy requires postgresql:// instead of postgres:// from older configurations
+    # Ensure standard postgresql+psycopg2 driver specification for SQLAlchemy 2.0 compatibility
     if DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 else:
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///attendance.db'
