@@ -22,5 +22,5 @@ COPY . .
 # Expose server port
 EXPOSE 5000
 
-# Launch application runner
-CMD ["python", "run.py"]
+# Launch Flask application using Gunicorn WSGI server
+CMD ["sh", "-c", "if [ -n \"$PORT\" ] && [ \"$PORT\" != \"5000\" ]; then exec gunicorn -w 2 -b 0.0.0.0:5000 -b 0.0.0.0:$PORT --timeout 120 --access-logfile - --error-logfile - app:app; else exec gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 --access-logfile - --error-logfile - app:app; fi"]
