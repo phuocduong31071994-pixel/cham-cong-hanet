@@ -2480,26 +2480,6 @@ def start_lark_periodic_sync():
     """
     def periodic_worker():
         time.sleep(30) # Delay after startup
-        # One-time startup heal for Pham Tan Thinh 2026-09-14
-        try:
-            with app.app_context():
-                setting_key = "heal_half_day_p2_thinh_v1"
-                if not Setting.query.filter_by(key=setting_key).first():
-                    thinh_emp = Employee.query.filter(Employee.name.ilike('%Phạm Tấn Thịnh%')).first()
-                    if thinh_emp:
-                        thinh_adj = AttendanceAdjustment.query.filter_by(person_id=thinh_emp.person_id, date='2026-09-14').first()
-                        if thinh_adj:
-                            thinh_adj.adjustment_type = 'P/2'
-                            thinh_adj.check_in = None
-                            thinh_adj.check_out = None
-                            thinh_adj.note = 'Lark duyệt: Annual leave - Off chiều 14/9 (0.5 ngày)'
-                            db.session.commit()
-                    db.session.add(Setting(key=setting_key, value="done"))
-                    db.session.commit()
-        except Exception as heal_ex:
-            db.session.rollback()
-            logging.error(f"Error in startup P/2 healing: {heal_ex}")
-
         while True:
             try:
                 with app.app_context():
