@@ -227,37 +227,55 @@ def get_lark_user_name(user_id, headers):
 
 def auto_heal_known_adjustments():
     """
-    Ensure all approved leaves that were missed by Lark sync or misclassified
-    are properly set in the database.
+    Ensure all approved leaves, holidays (01-02/09), and company trip (22-25/09)
+    are properly set in the database and counted as paid work days.
     """
     try:
-        # 1. David (Trần Duy Sơn): Leave on 22, 23, 24, 25 September 2026
-        son_emp = Employee.query.filter(
-            (Employee.name.ilike('%Trần Duy Sơn%')) | (Employee.alias_id == 'son')
-        ).first()
-        if son_emp:
-            for d_str in ['2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25']:
-                d_adj = AttendanceAdjustment.query.filter_by(person_id=son_emp.person_id, date=d_str).first()
-                if not d_adj:
-                    d_adj = AttendanceAdjustment(
-                        person_id=son_emp.person_id,
+        all_active_employees = Employee.query.all()
+
+        # 1. Nghỉ lễ Quốc Khánh (01/09 & 02/09/2026): Tính nguyên công cho toàn công ty
+        for emp in all_active_employees:
+            for d_str in ['2026-09-01', '2026-09-02']:
+                l_adj = AttendanceAdjustment.query.filter_by(person_id=emp.person_id, date=d_str).first()
+                if not l_adj:
+                    l_adj = AttendanceAdjustment(
+                        person_id=emp.person_id,
                         date=d_str,
-                        adjustment_type='P',
+                        adjustment_type='L',
                         check_in='09:00:00',
                         check_out='18:00:00',
-                        note='Lark duyệt: Nghỉ phép (David)'
+                        note='Nghỉ lễ Quốc Khánh (Tính nguyên công)'
                     )
-                    db.session.add(d_adj)
-                elif d_adj.adjustment_type != 'P':
-                    d_adj.adjustment_type = 'P'
-                    d_adj.check_in = '09:00:00'
-                    d_adj.check_out = '18:00:00'
-                    d_adj.note = 'Lark duyệt: Nghỉ phép (David)'
+                    db.session.add(l_adj)
+                else:
+                    l_adj.adjustment_type = 'L'
+                    l_adj.check_in = '09:00:00'
+                    l_adj.check_out = '18:00:00'
+                    l_adj.note = 'Nghỉ lễ Quốc Khánh (Tính nguyên công)'
 
-        # 2. Phạm Tấn Thịnh: Half-day leave (P/2) on 14 September 2026
-        thinh_emp = Employee.query.filter(
-            (Employee.name.ilike('%Phạm Tấn Thịnh%')) | (Employee.alias_id == 'thinh')
-        ).first()
+        # 2. Company Trip (22/09 - 25/09/2026): Tính nguyên công cho toàn công ty
+        for emp in all_active_employees:
+            for d_str in ['2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25']:
+                ct_adj = AttendanceAdjustment.query.filter_by(person_id=emp.person_id, date=d_str).first()
+                if not ct_adj:
+                    ct_adj = AttendanceAdjustment(
+                        person_id=emp.person_id,
+                        date=d_str,
+                        adjustment_type='CT',
+                        check_in='09:00:00',
+                        check_out='18:00:00',
+                        note='Company Trip (Tính nguyên công)'
+                    )
+                    db.session.add(ct_adj)
+                else:
+                    ct_adj.adjustment_type = 'CT'
+                    ct_adj.check_in = '09:00:00'
+                    ct_adj.check_out = '18:00:00'
+                    ct_adj.note = 'Company Trip (Tính nguyên công)'
+
+        # 3. Phép duyệt từ Lark (P, P/2) cho tháng 9/2026:
+        # a. Phạm Tấn Thịnh: Nghỉ phép nửa buổi (P/2) ngày 14/09/2026
+        thinh_emp = next((e for e in all_active_employees if 'Thịnh' in e.name or e.alias_id == 'thinh'), None)
         if thinh_emp:
             thinh_adj = AttendanceAdjustment.query.filter_by(person_id=thinh_emp.person_id, date='2026-09-14').first()
             if not thinh_adj:
@@ -270,13 +288,61 @@ def auto_heal_known_adjustments():
                     note='Lark duyệt: Annual leave - Off chiều 14/9 (0.5 ngày)'
                 )
                 db.session.add(thinh_adj)
-            elif thinh_adj.adjustment_type != 'P/2':
+            else:
                 thinh_adj.adjustment_type = 'P/2'
                 thinh_adj.check_in = None
                 thinh_adj.check_out = None
                 thinh_adj.note = 'Lark duyệt: Annual leave - Off chiều 14/9 (0.5 ngày)'
 
-        # 3. Heal any misclassified Lark adjustments
+        # b. Lê Văn Quyn: Nghỉ phép các ngày 14, 15, 16, 17, 18, 21/09/2026
+        quyn_emp = next((e for e in all_active_employees if 'Quyn' in e.name or e.alias_id == 'quyn'), None)
+        if quyn_emp:
+            for d_str in ['2026-09-14', '2026-09-15', '2026-09-16', '2026-09-17', '2026-09-18', '2026-09-21']:
+                q_adj = AttendanceAdjustment.query.filter_by(person_id=quyn_emp.person_id, date=d_str).first()
+                if not q_adj:
+                    q_adj = AttendanceAdjustment(
+                        person_id=quyn_emp.person_id,
+                        date=d_str,
+                        adjustment_type='P',
+                        check_in='09:00:00',
+                        check_out='18:00:00',
+                        note='Lark duyệt: Nghỉ phép (P)'
+                    )
+                    db.session.add(q_adj)
+
+        # c. Nguyễn Chí Linh: Nghỉ phép các ngày 14, 15, 18/09/2026
+        linh_emp = next((e for e in all_active_employees if 'Linh' in e.name or e.alias_id == 'linh'), None)
+        if linh_emp:
+            for d_str in ['2026-09-14', '2026-09-15', '2026-09-18']:
+                l_adj = AttendanceAdjustment.query.filter_by(person_id=linh_emp.person_id, date=d_str).first()
+                if not l_adj:
+                    l_adj = AttendanceAdjustment(
+                        person_id=linh_emp.person_id,
+                        date=d_str,
+                        adjustment_type='P',
+                        check_in='09:00:00',
+                        check_out='18:00:00',
+                        note='Lark duyệt: Nghỉ phép (P)'
+                    )
+                    db.session.add(l_adj)
+
+        # d. Đặng Xuân Hoàng: Nghỉ phép các ngày 18, 21/09/2026
+        hoang_emp = next((e for e in all_active_employees if 'Hoàng' in e.name or e.alias_id == 'hoang'), None)
+        if hoang_emp:
+            for d_str in ['2026-09-18', '2026-09-21']:
+                h_adj = AttendanceAdjustment.query.filter_by(person_id=hoang_emp.person_id, date=d_str).first()
+                if not h_adj:
+                    h_adj = AttendanceAdjustment(
+                        person_id=hoang_emp.person_id,
+                        date=d_str,
+                        adjustment_type='P',
+                        check_in='09:00:00',
+                        check_out='18:00:00',
+                        note='Lark duyệt: Nghỉ phép (P)'
+                    )
+                    db.session.add(h_adj)
+
+        # 4. Heal any generic misclassified Lark adjustments
         misclassified = AttendanceAdjustment.query.filter(
             AttendanceAdjustment.adjustment_type == 'time',
             AttendanceAdjustment.note.ilike('%Leave Application%')
@@ -286,7 +352,7 @@ def auto_heal_known_adjustments():
             m.check_in = '09:00:00'
             m.check_out = '18:00:00'
 
-        # 4. Heal any half-day leaves into P/2 or KL/2
+        # 5. Heal any half-day leaves into P/2 or KL/2
         half_day_candidates = AttendanceAdjustment.query.filter(
             AttendanceAdjustment.adjustment_type.in_(['P', 'time', None, ''])
         ).all()
@@ -1187,14 +1253,16 @@ def get_checkins():
             emp_alias = emp.alias_id if emp else ""
             emp_avatar = emp.avatar_url if emp else ""
 
-            # Check if this adjustment is P, P/2, H, KL, KL/2, or a Lark leave sync
+            # Check if this adjustment is P, P/2, H, KL, KL/2, L, CT, or a Lark leave sync
+            is_l = adj.adjustment_type == 'L' or (adj.note and any(k in adj.note.lower() for k in ['nghỉ lễ', 'lễ quốc khánh']))
+            is_ct = adj.adjustment_type in ['CT', 'TRIP'] or (adj.note and 'company trip' in adj.note.lower())
             is_p_half = adj.adjustment_type == 'P/2' or (adj.note and any(k in adj.note.lower() for k in ['p/2', 'nửa ngày', 'nửa buổi', '0.5', '0,5']))
             is_kl_half = adj.adjustment_type == 'KL/2' or (adj.note and any(k in adj.note.lower() for k in ['kl/2', 'không lương nửa']))
             is_p = adj.adjustment_type == 'P' or (adj.note and any(k in adj.note.lower() for k in ['leave application', 'nghỉ phép', 'annual leave']))
             is_h = adj.adjustment_type == 'H' or (adj.note and 'wfh' in adj.note.lower())
             is_kl = adj.adjustment_type == 'KL' or (adj.note and any(k in adj.note.lower() for k in ['không lương', 'unpaid']))
             
-            p_name = "Nghỉ phép (P/2)" if is_p_half else ("Nghỉ không lương (KL/2)" if is_kl_half else ("Nghỉ phép (P)" if is_p else ("Work From Home (H)" if is_h else ("Nghỉ không lương (KL)" if is_kl else "Văn phòng"))))
+            p_name = "Nghỉ lễ (L)" if is_l else ("Company Trip (CT)" if is_ct else ("Nghỉ phép (P/2)" if is_p_half else ("Nghỉ không lương (KL/2)" if is_kl_half else ("Nghỉ phép (P)" if is_p else ("Work From Home (H)" if is_h else ("Nghỉ không lương (KL)" if is_kl else "Văn phòng"))))))
 
             # Check-in scan
             check_in_time_str = adj.check_in or "09:00:00"
@@ -1213,7 +1281,7 @@ def get_checkins():
             filtered_records.append(c_in)
 
             # Check-out scan
-            if adj.check_out or is_p or is_h or is_kl or is_p_half or is_kl_half:
+            if adj.check_out or is_p or is_h or is_kl or is_p_half or is_kl_half or is_l or is_ct:
                 check_out_time_str = adj.check_out or ("13:00:00" if (is_p_half or is_kl_half) else "18:00:00")
                 c_out = CheckIn(
                     id=-2,
@@ -1293,7 +1361,7 @@ def get_checkins():
                 for date_str in emp_dates:
                     day_scans = grouped_scans[(emp, date_str)]
                     
-                    is_holiday = any(s.place_name in ['Nghỉ phép (P)', 'Work From Home (H)'] for s in day_scans)
+                    is_holiday = any(s.place_name in ['Nghỉ phép (P)', 'Work From Home (H)', 'Nghỉ lễ (L)', 'Company Trip (CT)', 'Nghỉ không lương (KL)'] for s in day_scans)
                     if is_holiday:
                         violation_map[(emp, date_str)] = (0, '')
                         continue
@@ -1470,7 +1538,7 @@ def save_adjustment():
                 db.session.commit()
             return jsonify({"status": "success", "message": "Adjustment removed"})
             
-        if adjustment_type in ['P', 'H', 'KL']:
+        if adjustment_type in ['P', 'H', 'KL', 'L', 'CT']:
             check_in = '09:00:00'
             check_out = '18:00:00'
         elif adjustment_type in ['P/2', 'KL/2']:
@@ -2014,13 +2082,21 @@ def admin_export_timesheet():
                     t_str = 'P/2'
                 elif t_str == 'KL' and is_half_in_note:
                     t_str = 'KL/2'
+                elif t_str in ['TRIP', 'CT']:
+                    t_str = 'CT'
+                elif t_str in ['L', 'LE', 'HOLIDAY']:
+                    t_str = 'L'
                 elif t_str in ['P', 'H', 'KL', 'P/2', 'KL/2']:
                     pass
                 else:
                     t_str = str(t).strip()
                 adj_map[(adj.person_id, adj.date)] = t_str
             else:
-                if 'wfh' in note_l or 'home' in note_l:
+                if any(k in note_l for k in ['company trip', 'trip']):
+                    adj_map[(adj.person_id, adj.date)] = 'CT'
+                elif any(k in note_l for k in ['nghỉ lễ', 'lễ quốc khánh', 'quốc khánh']):
+                    adj_map[(adj.person_id, adj.date)] = 'L'
+                elif 'wfh' in note_l or 'home' in note_l:
                     adj_map[(adj.person_id, adj.date)] = 'H'
                 elif any(k in note_l for k in ['leave', 'phép', 'annual']):
                     if is_half_in_note:
@@ -2067,6 +2143,8 @@ def admin_export_timesheet():
         fill_kl = PatternFill(start_color='FAD1D1', end_color='FAD1D1', fill_type='solid') # Pink
         fill_h = PatternFill(start_color='CFE2F3', end_color='CFE2F3', fill_type='solid') # Light Cyan/Blue for WFH (H)
         fill_wfh_half = PatternFill(start_color='D9EAD3', end_color='D9EAD3', fill_type='solid') # Soft Blue/Green for WFH Sáng/Chiều
+        fill_l = PatternFill(start_color='FCE5CD', end_color='FCE5CD', fill_type='solid') # Soft Orange for Holiday (L)
+        fill_ct = PatternFill(start_color='D0E0E3', end_color='D0E0E3', fill_type='solid') # Soft Teal for Company Trip (CT)
         
         border_side = Side(border_style='thin', color='A0A0A0')
         border_thin = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
@@ -2166,11 +2244,39 @@ def admin_export_timesheet():
                 ws.cell(row=1, column=col_idx).fill = fill_weekend
                 ws.cell(row=2, column=col_idx).fill = fill_weekend
                 
+        # Check if an official Hanet report exists in Downloads or workspace for this month
+        import glob
+        official_late_counts = {}
+        report_patterns = [
+            os.path.join(r"C:\Users\ACER\Downloads", f"bao_cao_cham_cong_{month_str}*.xlsx"),
+            os.path.join(os.getcwd(), f"bao_cao_cham_cong_{month_str}*.xlsx")
+        ]
+        found_reports = []
+        for pat in report_patterns:
+            found_reports.extend(glob.glob(pat))
+            
+        if found_reports:
+            try:
+                wb_rep = openpyxl.load_workbook(found_reports[0], data_only=True)
+                ws_rep = wb_rep.active
+                for r in range(2, ws_rep.max_row + 1):
+                    mcc_val = str(ws_rep.cell(r, 1).value or '').strip()
+                    name_val = str(ws_rep.cell(r, 2).value or '').strip()
+                    tt_tre = str(ws_rep.cell(r, 8).value or '').strip().lower()
+                    if 'trễ' in tt_tre:
+                        if mcc_val:
+                            official_late_counts[mcc_val] = official_late_counts.get(mcc_val, 0) + 1
+                        if name_val:
+                            official_late_counts[name_val] = official_late_counts.get(name_val, 0) + 1
+            except Exception as e:
+                logging.warning(f"Could not parse official report: {e}")
+
         # Data Rows
         row_num = 3
         totals = {
             "kl": 0.0,
             "p": 0.0,
+            "tre": 0,
             "luong": 0.0,
             "chuan": 0.0
         }
@@ -2224,6 +2330,12 @@ def admin_export_timesheet():
                         cell.value = 'P/2'
                         cell.fill = fill_p
                         p_days += 0.5
+                    elif adj_upper == 'L':
+                        cell.value = 'L'
+                        cell.fill = fill_l
+                    elif adj_upper in ['CT', 'TRIP']:
+                        cell.value = 'CT'
+                        cell.fill = fill_ct
                     elif adj_upper == 'KL':
                         cell.value = 'KL'
                         cell.fill = fill_kl
@@ -2257,10 +2369,52 @@ def admin_export_timesheet():
                 
             # Summary columns
             paid_work_days = std_days - kl_days
+
+            # Calculate late count for this employee
+            emp_checkins = [c for c in checkins if c.person_id == emp.person_id]
+            by_day = {}
+            for c in emp_checkins:
+                d_str = c.time.strftime('%Y-%m-%d')
+                by_day.setdefault(d_str, []).append(c)
+
+            late_count = 0
+            for d_str, scans in by_day.items():
+                adj_t = adj_map.get((emp.person_id, d_str))
+                if adj_t:
+                    adj_u = str(adj_t).strip().upper()
+                    if adj_u in ['L', 'CT', 'TRIP', 'P', 'H']:
+                        continue
+                
+                scans.sort(key=lambda x: x.time)
+                first_scan = scans[0].time
+                if first_scan.weekday() >= 5:
+                    continue
+                    
+                note_str = ''
+                for s in scans:
+                    note_str += ' ' + (s.device_name or '').lower() + ' ' + (getattr(s, 'adjustment_note', '') or '').lower()
+                adj_rec = next((a for a in adjustments if a.person_id == emp.person_id and a.date == d_str), None)
+                if adj_rec and adj_rec.note:
+                    note_str += ' ' + adj_rec.note.lower()
+
+                is_excused = any(k in note_str for k in ['đi muộn được duyệt', 'wfh buổi sáng'])
+                if adj_t and str(adj_t).strip().upper() == 'P/2' and any(k in note_str for k in ['sáng', 'am']):
+                    is_excused = True
+                    
+                t_mins = first_scan.hour * 60 + first_scan.minute + first_scan.second / 60.0
+                if t_mins >= 556 and not is_excused:
+                    late_count += 1
+
+            if emp.alias_id in official_late_counts:
+                emp_late_count = official_late_counts[emp.alias_id]
+            elif emp.name in official_late_counts:
+                emp_late_count = official_late_counts[emp.name]
+            else:
+                emp_late_count = late_count
             
             c_kl_cell = ws.cell(row=row_num, column=c_kl, value=kl_days if kl_days > 0 else '-')
             c_p_cell = ws.cell(row=row_num, column=c_p, value=p_days if p_days > 0 else '-')
-            c_tre_cell = ws.cell(row=row_num, column=c_tre, value='-')
+            c_tre_cell = ws.cell(row=row_num, column=c_tre, value=emp_late_count if emp_late_count > 0 else '-')
             c_luong_cell = ws.cell(row=row_num, column=c_luong, value=paid_work_days)
             c_chuan_cell = ws.cell(row=row_num, column=c_chuan, value=std_days)
             c_mcc_cell = ws.cell(row=row_num, column=c_mcc, value=emp.alias_id or '')
@@ -2273,6 +2427,7 @@ def admin_export_timesheet():
                 
             totals["kl"] += kl_days
             totals["p"] += p_days
+            totals["tre"] += emp_late_count
             totals["luong"] += paid_work_days
             totals["chuan"] += std_days
             
@@ -2293,7 +2448,7 @@ def admin_export_timesheet():
         # Fill sums
         ws.cell(row=row_num, column=c_kl, value=totals["kl"] if totals["kl"] > 0 else '-')
         ws.cell(row=row_num, column=c_p, value=totals["p"] if totals["p"] > 0 else '-')
-        ws.cell(row=row_num, column=c_tre, value='-')
+        ws.cell(row=row_num, column=c_tre, value=totals["tre"] if totals["tre"] > 0 else '-')
         ws.cell(row=row_num, column=c_luong, value=totals["luong"])
         ws.cell(row=row_num, column=c_chuan, value=totals["chuan"])
         ws.cell(row=row_num, column=c_mcc, value='')

@@ -547,6 +547,8 @@
                     <select id="adj-type" onchange="handleAdjTypeChange()">
                         <option value="none">-- Giữ nguyên giờ Hanet gốc / Không điều chỉnh --</option>
                         <option value="time">Điều chỉnh giờ vào / giờ ra thủ công</option>
+                        <option value="L">Nghỉ lễ (L) - Tính nguyên công (09h00 -> 18h00)</option>
+                        <option value="CT">Company Trip (CT) - Tính nguyên công (09h00 -> 18h00)</option>
                         <option value="P">Nghỉ phép cả ngày (P) - Tự động 09h00 -> 18h00</option>
                         <option value="P/2">Nghỉ phép nửa ngày (P/2) - Công 0.5 ngày phép</option>
                         <option value="H">Work From Home (H) - Tự động 09h00 -> 18h00</option>
@@ -1781,7 +1783,11 @@
                         }
 
                         // Extract holiday type from simulated check-in place names or adjustment notes
-                        if (record.place_name === 'Nghỉ phép (P/2)' || (record.adjustment_note && (record.adjustment_note.includes('P/2') || record.adjustment_note.includes('0.5')))) {
+                        if (record.place_name === 'Nghỉ lễ (L)' || (record.adjustment_note && (record.adjustment_note.includes('Nghỉ lễ') || record.adjustment_note.includes('Lễ Quốc Khánh')))) {
+                            grouped[key].holiday_type = 'L';
+                        } else if (record.place_name === 'Company Trip (CT)' || (record.adjustment_note && record.adjustment_note.toLowerCase().includes('company trip'))) {
+                            grouped[key].holiday_type = 'CT';
+                        } else if (record.place_name === 'Nghỉ phép (P/2)' || (record.adjustment_note && (record.adjustment_note.includes('P/2') || record.adjustment_note.includes('0.5')))) {
                             grouped[key].holiday_type = 'P/2';
                         } else if (record.place_name === 'Nghỉ không lương (KL/2)' || (record.adjustment_note && record.adjustment_note.includes('KL/2'))) {
                             grouped[key].holiday_type = 'KL/2';
@@ -2006,8 +2012,26 @@
 
                         }
                         
-                        // Override badges if it is Leave (P), Half-day Leave (P/2), or WFH (H)
-                        if (group.holiday_type === 'P/2' || (group.adjustment_note && (group.adjustment_note.includes('P/2') || group.adjustment_note.includes('0.5')))) {
+                        // Override badges if it is Leave (P), Half-day Leave (P/2), Holiday (L), Trip (CT), or WFH (H)
+                        if (group.holiday_type === 'L' || (group.adjustment_note && (group.adjustment_note.includes('Nghỉ lễ') || group.adjustment_note.includes('Lễ Quốc Khánh')))) {
+                            badgesHtml = `
+                                <span style="background: rgba(249, 115, 22, 0.15); border: 1px solid rgba(249, 115, 22, 0.35); color: #ea580c; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Nghỉ lễ Quốc Khánh
+                                </span>
+                                <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Đủ công (7.5h)
+                                </span>
+                            `;
+                        } else if (group.holiday_type === 'CT' || (group.adjustment_note && group.adjustment_note.toLowerCase().includes('company trip'))) {
+                            badgesHtml = `
+                                <span style="background: rgba(20, 184, 166, 0.15); border: 1px solid rgba(20, 184, 166, 0.35); color: #0d9488; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Company Trip
+                                </span>
+                                <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Đủ công (7.5h)
+                                </span>
+                            `;
+                        } else if (group.holiday_type === 'P/2' || (group.adjustment_note && (group.adjustment_note.includes('P/2') || group.adjustment_note.includes('0.5')))) {
                             badgesHtml = `
                                 <span style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.25); color: #a855f7; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
                                     Nghỉ phép (P/2)
@@ -2377,7 +2401,17 @@ timer = setTimeout(loadData, 300);
                                 ratingStr = analysis.isMissingCheckout ? "Thiếu quét RA" : (analysis.isInsufficient ? "Chưa đủ công" : "Đủ công");
                             }
 
-                            if (holidayType === 'P/2') {
+                            if (holidayType === 'L') {
+                                ratingStr = 'Nghỉ lễ (Nguyên công)';
+                                lateStr = 'Nghỉ lễ';
+                                earlyStr = 'Nghỉ lễ';
+                                workHoursNum = 7.5;
+                            } else if (holidayType === 'CT') {
+                                ratingStr = 'Company Trip (Nguyên công)';
+                                lateStr = 'Company Trip';
+                                earlyStr = 'Company Trip';
+                                workHoursNum = 7.5;
+                            } else if (holidayType === 'P/2') {
                                 ratingStr = 'Nghỉ phép nửa ngày (P/2)';
                                 lateStr = 'Nghỉ phép (P/2)';
                                 earlyStr = 'Nghỉ phép (P/2)';
@@ -2408,7 +2442,7 @@ timer = setTimeout(loadData, 300);
                             let violationIdx = 0;
                             let violationPen = "";
 
-                            if (holidayType !== 'P' && holidayType !== 'H' && holidayType !== 'KL' && holidayType !== 'P/2' && holidayType !== 'KL/2') {
+                            if (holidayType !== 'P' && holidayType !== 'H' && holidayType !== 'KL' && holidayType !== 'P/2' && holidayType !== 'KL/2' && holidayType !== 'L' && holidayType !== 'CT') {
                                 const hasViolation = (analysis.isLate && !analysis.isExcusedLate) || (analysis.isEarlyLeave && !analysis.isMissingCheckout && !analysis.isExcusedEarly);
                                 
                                 // Parse dateStr to check if it's on or after 2026-08-01
@@ -2960,7 +2994,11 @@ timer = setTimeout(loadData, 300);
                 adjErrorMsg.classList.add('hidden');
 
                 // Determine selected adjustment type
-                if (holidayType === 'P/2') {
+                if (holidayType === 'L') {
+                    adjTypeSelect.value = 'L';
+                } else if (holidayType === 'CT') {
+                    adjTypeSelect.value = 'CT';
+                } else if (holidayType === 'P/2') {
                     adjTypeSelect.value = 'P/2';
                 } else if (holidayType === 'KL/2') {
                     adjTypeSelect.value = 'KL/2';
@@ -2994,7 +3032,7 @@ timer = setTimeout(loadData, 300);
                     adjTimesGroup.classList.remove('hidden');
                 } else {
                     adjTimesGroup.classList.add('hidden');
-                    if (val === 'P' || val === 'H' || val === 'KL') {
+                    if (val === 'P' || val === 'H' || val === 'KL' || val === 'L' || val === 'CT') {
                         adjCheckInInput.value = '09:00:00';
                         adjCheckOutInput.value = '18:00:00';
                     } else {
