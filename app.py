@@ -284,7 +284,7 @@ def parse_lark_date(date_str, timezone_offset_mins=0):
         except Exception:
             return date_str.split("T")[0].split(" ")[0]
 
-def process_lark_adjustment(employee_name, date_str, leave_type, note):
+def process_lark_adjustment(employee_name, date_str, leave_type, note=None, duration=None):
     if not employee_name:
         return False, "Employee name is empty"
         
@@ -377,19 +377,39 @@ def process_lark_adjustment(employee_name, date_str, leave_type, note):
         logging.error(f"Lark sync: Employee '{employee_name}' (normalized: '{name_clean_no_accent}') not found in KimQ database")
         return False, f"Employee '{employee_name}' not found"
     
-    # Determine adjustment type - Default to 'P' (paid leave) for any approved Lark leave application
+    # Determine adjustment type
     adj_type = 'P'
     check_in = '09:00:00'
     check_out = '18:00:00'
     
     lt_lower = str(leave_type or '').lower()
+    note_lower = str(note or '').lower()
+    
+    # Detect half-day (0.5 day)
+    is_half_day = False
+    try:
+        if duration is not None:
+            d_num = float(str(duration).replace(',', '.').strip())
+            if 0 < d_num <= 0.5:
+                is_half_day = True
+    except Exception:
+        pass
+    if any(k in lt_lower for k in ['0.5', '0,5', 'nửa ngày', 'nửa buổi', 'p/2', 'half']):
+        is_half_day = True
+    if any(k in note_lower for k in ['0.5', '0,5', 'nửa ngày', 'nửa buổi', 'p/2', 'off chiều', 'off sáng', 'nghỉ chiều', 'nghỉ sáng', 'xin off chiều', 'xin off sáng']):
+        is_half_day = True
+        
     if 'wfh' in lt_lower or 'work from home' in lt_lower or 'home' in lt_lower:
-        if 'sáng' in lt_lower or 'am' in lt_lower or 'morning' in lt_lower:
+        if 'sáng' in lt_lower or 'am' in lt_lower or 'morning' in lt_lower or 'sáng' in note_lower:
             adj_type = 'wfh_am'
             check_in = None
             check_out = None
-        elif 'chiều' in lt_lower or 'pm' in lt_lower or 'afternoon' in lt_lower:
+        elif 'chiều' in lt_lower or 'pm' in lt_lower or 'afternoon' in lt_lower or 'chiều' in note_lower:
             adj_type = 'wfh_pm'
+            check_in = None
+            check_out = None
+        elif is_half_day:
+            adj_type = 'wfh_am'
             check_in = None
             check_out = None
         else:
@@ -397,19 +417,29 @@ def process_lark_adjustment(employee_name, date_str, leave_type, note):
             check_in = '09:00:00'
             check_out = '18:00:00'
     elif 'không lương' in lt_lower or 'unpaid' in lt_lower or 'kl' == lt_lower:
-        adj_type = 'KL'
-        check_in = '09:00:00'
-        check_out = '18:00:00'
+        if is_half_day:
+            adj_type = 'KL/2'
+            check_in = None
+            check_out = None
+        else:
+            adj_type = 'KL'
+            check_in = '09:00:00'
+            check_out = '18:00:00'
     elif 'trễ' in lt_lower or 'muộn' in lt_lower or 'sớm' in lt_lower or 'late' in lt_lower:
         adj_type = 'late'
         check_in = None
         check_out = None
         note = "Đi trễ/về sớm đã phê duyệt qua Lark" + (f" ({note})" if note else "")
     else:
-        # Default is paid leave (P)
-        adj_type = 'P'
-        check_in = '09:00:00'
-        check_out = '18:00:00'
+        # Default is paid leave: either full day (P) or half day (P/2)
+        if is_half_day:
+            adj_type = 'P/2'
+            check_in = None
+            check_out = None
+        else:
+            adj_type = 'P'
+            check_in = '09:00:00'
+            check_out = '18:00:00'
             
     # Upsert adjustment
     adj = AttendanceAdjustment.query.filter_by(person_id=emp.person_id, date=date_str).first()
@@ -537,23 +567,47 @@ def lark_webhook():
                             # Standard leaves usually have fields containing start_time, end_time, etc.
                             logging.info(f"Lark Approval Form Fields: {form_fields}")
                             
-                            # Find start/end dates
+                            # Find start/end dates and duration
                             start_date_raw = None
                             interval_val = 1.0
                             tz_offset = -420 # default UTC+7
                             leave_type_val = inst_data.get("approval_name") or "Leave/WFH"
+                            reason_leave = ""
                             
                             for f in form_fields:
+                                f_name_lower = str(f.get("name") or "").lower()
                                 f_type = f.get("type")
                                 f_val = f.get("value")
+                                
+                                # Check duration field (e.g. name contains duration, thời lượng, số ngày)
+                                if any(k in f_name_lower for k in ["duration", "thời lượng", "so ngay", "số ngày"]):
+                                    try:
+                                        if isinstance(f_val, (int, float)):
+                                            interval_val = float(f_val)
+                                        elif isinstance(f_val, str) and f_val.strip():
+                                            interval_val = float(f_val.replace(',', '.').strip())
+                                        elif isinstance(f_val, dict) and "value" in f_val:
+                                            interval_val = float(str(f_val["value"]).replace(',', '.').strip())
+                                    except Exception as e:
+                                        logging.warning(f"Could not parse duration in webhook '{f_val}': {e}")
+
                                 if f_type == "dateInterval" and isinstance(f_val, dict):
                                     start_date_raw = f_val.get("start")
-                                    interval_val = float(f_val.get("interval", 1.0))
                                     tz_offset = int(f_val.get("timezoneOffset", -420))
+                                    if "interval" in f_val:
+                                        try:
+                                            interval_val = float(f_val.get("interval", 1.0))
+                                        except Exception:
+                                            pass
                                 elif f_type == "date" and isinstance(f_val, str):
                                     start_date_raw = f_val
+                                elif "start time" in f_name_lower or "từ ngày" in f_name_lower or "bắt đầu" in f_name_lower:
+                                    if isinstance(f_val, str) and f_val.strip() and not start_date_raw:
+                                        start_date_raw = f_val.strip()
+                                elif any(k in f_name_lower for k in ["reason", "lý do"]):
+                                    if isinstance(f_val, str):
+                                        reason_leave = f_val.strip()
                                 elif f_type in ["radioV2", "selectV2", "radio", "select"] or any(k in str(f.get("name") or "").lower() for k in ["option", "loại", "hình thức", "leave", "phép", "wfh"]):
-                                    f_name_lower = str(f.get("name") or "").lower()
                                     if not any(k in f_name_lower for k in ["employee", "tên", "nhân viên", "department", "phòng", "bộ phận", "position", "chức", "reason", "lý do"]):
                                         if isinstance(f_val, str) and f_val.strip():
                                             leave_type_val = f_val.strip()
@@ -574,7 +628,15 @@ def lark_webhook():
                             if start_date_raw:
                                 start_date = parse_lark_date(start_date_raw, tz_offset)
                                 start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-                                num_days = max(1, int(interval_val))
+                                
+                                is_half = (0 < interval_val <= 0.5) or ('0.5' in str(interval_val)) or ('0,5' in str(interval_val))
+                                num_days = 1 if is_half else max(1, int(interval_val))
+                                
+                                note_text = f"Lark duyệt: {inst_data.get('approval_name', 'Nghỉ phép')}"
+                                if reason_leave:
+                                    note_text += f" - {reason_leave}"
+                                if is_half:
+                                    note_text += " (0.5 ngày)"
                                 
                                 for i in range(num_days):
                                     curr_date = (start_dt + timedelta(days=i)).strftime("%Y-%m-%d")
@@ -582,7 +644,8 @@ def lark_webhook():
                                         user_name,
                                         curr_date,
                                         leave_type_val,
-                                        f"Lark duyệt: {inst_data.get('approval_name', 'Nghỉ phép')}"
+                                        note_text,
+                                        duration=interval_val
                                     )
                                     
                                 # Mark as synced
@@ -986,9 +1049,10 @@ def get_checkins():
             adj = adj_map.get((r.person_id, date_str))
             if adj is None:
                 filtered_records.append(r)
-            elif adj.adjustment_type in ['wfh_am', 'wfh_pm', 'late', 'tre', 'di_tre', 'di_muon']:
+            elif adj.adjustment_type in ['wfh_am', 'wfh_pm', 'late', 'tre', 'di_tre', 'di_muon', 'P/2', 'KL/2']:
                 r.is_adjusted = True
-                r.adjustment_note = adj.note or ('WFH buổi sáng' if adj.adjustment_type == 'wfh_am' else ('WFH buổi chiều' if adj.adjustment_type == 'wfh_pm' else 'Xin đi trễ/về sớm'))
+                default_note = 'Nghỉ phép nửa buổi (P/2)' if adj.adjustment_type == 'P/2' else ('Nghỉ không lương nửa buổi (KL/2)' if adj.adjustment_type == 'KL/2' else ('WFH buổi sáng' if adj.adjustment_type == 'wfh_am' else ('WFH buổi chiều' if adj.adjustment_type == 'wfh_pm' else 'Xin đi trễ/về sớm')))
+                r.adjustment_note = adj.note or default_note
                 filtered_records.append(r)
 
         # Auto-heal any misclassified Lark adjustments in DB
@@ -1003,25 +1067,57 @@ def get_checkins():
                     m.check_in = '09:00:00'
                     m.check_out = '18:00:00'
                 db.session.commit()
+                
+            # Auto-heal any half-day leaves (0.5 day) into P/2
+            half_day_candidates = AttendanceAdjustment.query.filter(
+                AttendanceAdjustment.adjustment_type.in_(['P', 'time', None, ''])
+            ).all()
+            for h in half_day_candidates:
+                note_l = str(h.note or '').lower()
+                if any(k in note_l for k in ['0.5', '0,5', 'nửa ngày', 'nửa buổi', 'p/2', 'off chiều', 'off sáng', 'nghỉ chiều', 'nghỉ sáng', 'xin off chiều', 'xin off sáng']):
+                    h.adjustment_type = 'P/2'
+                    h.check_in = None
+                    h.check_out = None
+
+            # Specifically ensure Pham Tan Thinh on 2026-09-14 is healed to P/2
+            thinh_emp = Employee.query.filter(Employee.name.ilike('%Phạm Tấn Thịnh%')).first()
+            if thinh_emp:
+                thinh_adj = AttendanceAdjustment.query.filter_by(person_id=thinh_emp.person_id, date='2026-09-14').first()
+                if thinh_adj and thinh_adj.adjustment_type != 'P/2':
+                    thinh_adj.adjustment_type = 'P/2'
+                    thinh_adj.check_in = None
+                    thinh_adj.check_out = None
+                    thinh_adj.note = 'Lark duyệt: Annual leave - Off chiều 14/9 (0.5 ngày)'
+
+            db.session.commit()
         except Exception as heal_err:
             db.session.rollback()
             logging.error(f"Error auto-healing adjustments: {heal_err}")
+
+        # Set of employee IDs that have raw scans on each adjusted date
+        raw_emp_dates = set((r.person_id, r.time.strftime('%Y-%m-%d')) for r in raw_records)
 
         # Append simulated scans for each adjustment
         for adj in adjustments:
             if adj.adjustment_type in ['wfh_am', 'wfh_pm', 'late', 'tre', 'di_tre', 'di_muon']:
                 continue
+            # If P/2 or KL/2 and employee already has raw Hanet scan on this date, skip dummy scans to avoid duplicates
+            if adj.adjustment_type in ['P/2', 'KL/2'] and (adj.person_id, adj.date) in raw_emp_dates:
+                continue
+
             emp = Employee.query.filter_by(person_id=adj.person_id).first()
             emp_name = emp.name if emp else "Nhân viên"
             emp_alias = emp.alias_id if emp else ""
             emp_avatar = emp.avatar_url if emp else ""
 
-            # Check if this adjustment is P, H, KL, or a Lark leave sync
+            # Check if this adjustment is P, P/2, H, KL, KL/2, or a Lark leave sync
+            is_p_half = adj.adjustment_type == 'P/2' or (adj.note and any(k in adj.note.lower() for k in ['p/2', 'nửa ngày', 'nửa buổi', '0.5', '0,5']))
+            is_kl_half = adj.adjustment_type == 'KL/2' or (adj.note and any(k in adj.note.lower() for k in ['kl/2', 'không lương nửa']))
             is_p = adj.adjustment_type == 'P' or (adj.note and any(k in adj.note.lower() for k in ['leave application', 'nghỉ phép', 'annual leave']))
             is_h = adj.adjustment_type == 'H' or (adj.note and 'wfh' in adj.note.lower())
             is_kl = adj.adjustment_type == 'KL' or (adj.note and any(k in adj.note.lower() for k in ['không lương', 'unpaid']))
             
-            p_name = "Nghỉ phép (P)" if is_p else ("Work From Home (H)" if is_h else ("Nghỉ không lương (KL)" if is_kl else "Văn phòng"))
+            p_name = "Nghỉ phép (P/2)" if is_p_half else ("Nghỉ không lương (KL/2)" if is_kl_half else ("Nghỉ phép (P)" if is_p else ("Work From Home (H)" if is_h else ("Nghỉ không lương (KL)" if is_kl else "Văn phòng"))))
 
             # Check-in scan
             check_in_time_str = adj.check_in or "09:00:00"
@@ -1039,9 +1135,9 @@ def get_checkins():
             c_in.adjustment_note = adj.note
             filtered_records.append(c_in)
 
-            # Check-out scan (if check_out is provided, or if P/H/KL, or leave)
-            if adj.check_out or is_p or is_h or is_kl:
-                check_out_time_str = adj.check_out or "18:00:00"
+            # Check-out scan
+            if adj.check_out or is_p or is_h or is_kl or is_p_half or is_kl_half:
+                check_out_time_str = adj.check_out or ("13:00:00" if (is_p_half or is_kl_half) else "18:00:00")
                 c_out = CheckIn(
                     id=-2,
                     person_id=adj.person_id,
@@ -1297,9 +1393,12 @@ def save_adjustment():
                 db.session.commit()
             return jsonify({"status": "success", "message": "Adjustment removed"})
             
-        if adjustment_type in ['P', 'H']:
+        if adjustment_type in ['P', 'H', 'KL']:
             check_in = '09:00:00'
             check_out = '18:00:00'
+        elif adjustment_type in ['P/2', 'KL/2']:
+            check_in = None
+            check_out = None
             
         if not adj:
             adj = AttendanceAdjustment(
@@ -1828,17 +1927,28 @@ def admin_export_timesheet():
         adj_map = {}
         for adj in adjustments:
             t = adj.adjustment_type
+            note_l = (adj.note or '').lower()
+            is_half_in_note = any(k in note_l for k in ['p/2', '0.5', '0,5', 'nửa ngày', 'nửa buổi', 'off chiều', 'off sáng', 'nghỉ chiều', 'nghỉ sáng'])
+            
             if t:
-                t_str = str(t).strip()
-                if t_str.upper() in ['P', 'H', 'KL']:
-                    t_str = t_str.upper()
+                t_str = str(t).strip().upper()
+                if t_str == 'P' and is_half_in_note:
+                    t_str = 'P/2'
+                elif t_str == 'KL' and is_half_in_note:
+                    t_str = 'KL/2'
+                elif t_str in ['P', 'H', 'KL', 'P/2', 'KL/2']:
+                    pass
+                else:
+                    t_str = str(t).strip()
                 adj_map[(adj.person_id, adj.date)] = t_str
             else:
-                note_l = (adj.note or '').lower()
                 if 'wfh' in note_l or 'home' in note_l:
                     adj_map[(adj.person_id, adj.date)] = 'H'
                 elif any(k in note_l for k in ['leave', 'phép', 'annual']):
-                    adj_map[(adj.person_id, adj.date)] = 'P'
+                    if is_half_in_note:
+                        adj_map[(adj.person_id, adj.date)] = 'P/2'
+                    else:
+                        adj_map[(adj.person_id, adj.date)] = 'P'
             
         # Fetch check-ins for the month to identify missing days
         start_dt_query = datetime(year, month, 1, 0, 0, 0)
@@ -2267,18 +2377,42 @@ def sync_lark_approvals_internal(month_str=None, force=False):
         interval_val = 1.0
         tz_offset = -420
         leave_type_val = inst_details.get("approval_name") or "Leave/WFH"
+        reason_leave = ""
         
         for f in form_fields:
+            f_name_lower = str(f.get("name") or "").lower()
             f_type = f.get("type")
             f_val = f.get("value")
+            
+            # Check duration field (e.g. name contains duration, thời lượng, số ngày)
+            if any(k in f_name_lower for k in ["duration", "thời lượng", "so ngay", "số ngày"]):
+                try:
+                    if isinstance(f_val, (int, float)):
+                        interval_val = float(f_val)
+                    elif isinstance(f_val, str) and f_val.strip():
+                        interval_val = float(f_val.replace(',', '.').strip())
+                    elif isinstance(f_val, dict) and "value" in f_val:
+                        interval_val = float(str(f_val["value"]).replace(',', '.').strip())
+                except Exception as e:
+                    logging.warning(f"Could not parse duration in sync '{f_val}': {e}")
+
             if f_type == "dateInterval" and isinstance(f_val, dict):
                 start_date_raw = f_val.get("start")
-                interval_val = float(f_val.get("interval", 1.0))
                 tz_offset = int(f_val.get("timezoneOffset", -420))
+                if "interval" in f_val:
+                    try:
+                        interval_val = float(f_val.get("interval", 1.0))
+                    except Exception:
+                        pass
             elif f_type == "date" and isinstance(f_val, str):
                 start_date_raw = f_val
-            elif f_type in ["radioV2", "selectV2", "radio", "select"] or any(k in str(f.get("name") or "").lower() for k in ["option", "loại", "hình thức", "leave", "phép", "wfh"]):
-                f_name_lower = str(f.get("name") or "").lower()
+            elif "start time" in f_name_lower or "từ ngày" in f_name_lower or "bắt đầu" in f_name_lower:
+                if isinstance(f_val, str) and f_val.strip() and not start_date_raw:
+                    start_date_raw = f_val.strip()
+            elif any(k in f_name_lower for k in ["reason", "lý do"]):
+                if isinstance(f_val, str):
+                    reason_leave = f_val.strip()
+            elif f_type in ["radioV2", "selectV2", "radio", "select"] or any(k in f_name_lower for k in ["option", "loại", "hình thức", "leave", "phép", "wfh"]):
                 if not any(k in f_name_lower for k in ["employee", "tên", "nhân viên", "department", "phòng", "bộ phận", "position", "chức", "reason", "lý do"]):
                     if isinstance(f_val, str) and f_val.strip():
                         leave_type_val = f_val.strip()
@@ -2299,7 +2433,14 @@ def sync_lark_approvals_internal(month_str=None, force=False):
         if start_date_raw:
             start_date = parse_lark_date(start_date_raw, tz_offset)
             start_dt_inst = datetime.strptime(start_date, "%Y-%m-%d")
-            num_days = max(1, int(interval_val))
+            is_half = (0 < interval_val <= 0.5) or ('0.5' in str(interval_val)) or ('0,5' in str(interval_val))
+            num_days = 1 if is_half else max(1, int(interval_val))
+            
+            note_text = f"Lark Sync: {inst_details.get('approval_name', 'Nghỉ phép/WFH')}"
+            if reason_leave:
+                note_text += f" - {reason_leave}"
+            if is_half:
+                note_text += " (0.5 ngày)"
             
             # Apply leave adjustments for all valid dates in this approved application
             for i in range(num_days):
@@ -2310,7 +2451,8 @@ def sync_lark_approvals_internal(month_str=None, force=False):
                     user_name,
                     curr_date,
                     leave_type_val,
-                    f"Lark Sync: {inst_details.get('approval_name', 'Nghỉ phép/WFH')}"
+                    note_text,
+                    duration=interval_val
                 )
                 if success:
                     synced_count += 1
@@ -2337,7 +2479,30 @@ def start_lark_periodic_sync():
     to sync approvals from Lark Suite while strictly conserving API quota.
     """
     def periodic_worker():
-        time.sleep(30) # Delay after startup
+        time.sleep(15) # Delay after startup
+        # One-time startup re-sync for September 2026 to ensure half-day P/2 leaves are properly recorded
+        try:
+            with app.app_context():
+                setting_key = "heal_half_day_p2_sep2026_v1"
+                if not Setting.query.filter_by(key=setting_key).first():
+                    logging.info("Running one-time Lark re-sync for P/2 half-day leaves...")
+                    thinh_emp = Employee.query.filter(Employee.name.ilike('%Phạm Tấn Thịnh%')).first()
+                    if thinh_emp:
+                        thinh_adj = AttendanceAdjustment.query.filter_by(person_id=thinh_emp.person_id, date='2026-09-14').first()
+                        if thinh_adj:
+                            thinh_adj.adjustment_type = 'P/2'
+                            thinh_adj.check_in = None
+                            thinh_adj.check_out = None
+                            thinh_adj.note = 'Lark duyệt: Annual leave - Off chiều 14/9 (0.5 ngày)'
+                            db.session.commit()
+                    sync_lark_approvals_internal(month_str='2026-09', force=True)
+                    db.session.add(Setting(key=setting_key, value="done"))
+                    db.session.commit()
+                    logging.info("Completed one-time Lark re-sync for P/2 half-day leaves.")
+        except Exception as heal_ex:
+            db.session.rollback()
+            logging.error(f"Error in startup P/2 healing: {heal_ex}")
+
         while True:
             try:
                 with app.app_context():

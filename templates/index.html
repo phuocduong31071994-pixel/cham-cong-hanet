@@ -547,9 +547,11 @@
                     <select id="adj-type" onchange="handleAdjTypeChange()">
                         <option value="none">-- Giữ nguyên giờ Hanet gốc / Không điều chỉnh --</option>
                         <option value="time">Điều chỉnh giờ vào / giờ ra thủ công</option>
-                        <option value="P">Nghỉ phép (P) - Tự động 09h00 -> 18h00</option>
+                        <option value="P">Nghỉ phép cả ngày (P) - Tự động 09h00 -> 18h00</option>
+                        <option value="P/2">Nghỉ phép nửa ngày (P/2) - Công 0.5 ngày phép</option>
                         <option value="H">Work From Home (H) - Tự động 09h00 -> 18h00</option>
-                        <option value="KL">Nghỉ không lương (KL) - Tự động 09h00 -> 18h00, Công 0</option>
+                        <option value="KL">Nghỉ không lương cả ngày (KL) - Tự động 09h00 -> 18h00, Công 0</option>
+                        <option value="KL/2">Nghỉ không lương nửa ngày (KL/2) - Trừ 0.5 ngày công</option>
                         <option value="wfh_am">Work From Home (WFH) Buổi Sáng - Thực tế Hanet, Công 4.5h</option>
                         <option value="wfh_pm">Work From Home (WFH) Buổi Chiều - Thực tế Hanet, Công 3.0h</option>
                     </select>
@@ -1778,8 +1780,12 @@
                             }
                         }
 
-                        // Extract holiday type from simulated check-in place names
-                        if (record.place_name === 'Nghỉ phép (P)') {
+                        // Extract holiday type from simulated check-in place names or adjustment notes
+                        if (record.place_name === 'Nghỉ phép (P/2)' || (record.adjustment_note && (record.adjustment_note.includes('P/2') || record.adjustment_note.includes('0.5')))) {
+                            grouped[key].holiday_type = 'P/2';
+                        } else if (record.place_name === 'Nghỉ không lương (KL/2)' || (record.adjustment_note && record.adjustment_note.includes('KL/2'))) {
+                            grouped[key].holiday_type = 'KL/2';
+                        } else if (record.place_name === 'Nghỉ phép (P)') {
                             grouped[key].holiday_type = 'P';
                         } else if (record.place_name === 'Work From Home (H)') {
                             grouped[key].holiday_type = 'H';
@@ -2000,8 +2006,26 @@
 
                         }
                         
-                        // Override badges if it is Leave (P) or WFH (H)
-                        if (group.holiday_type === 'P') {
+                        // Override badges if it is Leave (P), Half-day Leave (P/2), or WFH (H)
+                        if (group.holiday_type === 'P/2' || (group.adjustment_note && (group.adjustment_note.includes('P/2') || group.adjustment_note.includes('0.5')))) {
+                            badgesHtml = `
+                                <span style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.25); color: #a855f7; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Nghỉ phép (P/2)
+                                </span>
+                                <span style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #10b981; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Nửa ngày phép (3.75h)
+                                </span>
+                            `;
+                        } else if (group.holiday_type === 'KL/2' || (group.adjustment_note && group.adjustment_note.includes('KL/2'))) {
+                            badgesHtml = `
+                                <span style="background: rgba(249, 115, 22, 0.1); border: 1px solid rgba(249, 115, 22, 0.25); color: #f97316; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Nghỉ không lương (KL/2)
+                                </span>
+                                <span style="background: rgba(107, 114, 128, 0.1); border: 1px solid rgba(107, 114, 128, 0.25); color: #6b7280; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                    Trừ nửa công
+                                </span>
+                            `;
+                        } else if (group.holiday_type === 'P') {
                             badgesHtml = `
                                 <span style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.25); color: #a855f7; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 2rem; display: inline-flex; align-items: center; gap: 0.25rem;">
                                     Nghỉ phép (P)
@@ -2259,7 +2283,11 @@ timer = setTimeout(loadData, 300);
                             recordMap[key].forEach(record => {
                                 if (record.place_name) placeName = record.place_name;
 
-                                if (record.place_name === 'Nghỉ phép (P)') {
+                                if (record.place_name === 'Nghỉ phép (P/2)' || (record.adjustment_note && (record.adjustment_note.includes('P/2') || record.adjustment_note.includes('0.5')))) {
+                                    holidayType = 'P/2';
+                                } else if (record.place_name === 'Nghỉ không lương (KL/2)' || (record.adjustment_note && record.adjustment_note.includes('KL/2'))) {
+                                    holidayType = 'KL/2';
+                                } else if (record.place_name === 'Nghỉ phép (P)') {
                                     holidayType = 'P';
                                 } else if (record.place_name === 'Work From Home (H)') {
                                     holidayType = 'H';
@@ -2349,7 +2377,17 @@ timer = setTimeout(loadData, 300);
                                 ratingStr = analysis.isMissingCheckout ? "Thiếu quét RA" : (analysis.isInsufficient ? "Chưa đủ công" : "Đủ công");
                             }
 
-                            if (holidayType === 'P') {
+                            if (holidayType === 'P/2') {
+                                ratingStr = 'Nghỉ phép nửa ngày (P/2)';
+                                lateStr = 'Nghỉ phép (P/2)';
+                                earlyStr = 'Nghỉ phép (P/2)';
+                                workHoursNum = 3.75;
+                            } else if (holidayType === 'KL/2') {
+                                ratingStr = 'Nghỉ không lương (KL/2)';
+                                lateStr = 'Nghỉ KL (KL/2)';
+                                earlyStr = 'Nghỉ KL (KL/2)';
+                                workHoursNum = 0.0;
+                            } else if (holidayType === 'P') {
                                 ratingStr = 'Nghỉ phép';
                                 lateStr = 'Nghỉ phép';
                                 earlyStr = 'Nghỉ phép';
@@ -2370,7 +2408,7 @@ timer = setTimeout(loadData, 300);
                             let violationIdx = 0;
                             let violationPen = "";
 
-                            if (holidayType !== 'P' && holidayType !== 'H' && holidayType !== 'KL') {
+                            if (holidayType !== 'P' && holidayType !== 'H' && holidayType !== 'KL' && holidayType !== 'P/2' && holidayType !== 'KL/2') {
                                 const hasViolation = (analysis.isLate && !analysis.isExcusedLate) || (analysis.isEarlyLeave && !analysis.isMissingCheckout && !analysis.isExcusedEarly);
                                 
                                 // Parse dateStr to check if it's on or after 2026-08-01
@@ -2922,7 +2960,11 @@ timer = setTimeout(loadData, 300);
                 adjErrorMsg.classList.add('hidden');
 
                 // Determine selected adjustment type
-                if (holidayType === 'P') {
+                if (holidayType === 'P/2') {
+                    adjTypeSelect.value = 'P/2';
+                } else if (holidayType === 'KL/2') {
+                    adjTypeSelect.value = 'KL/2';
+                } else if (holidayType === 'P') {
                     adjTypeSelect.value = 'P';
                 } else if (holidayType === 'H') {
                     adjTypeSelect.value = 'H';
