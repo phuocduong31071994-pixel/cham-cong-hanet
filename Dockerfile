@@ -22,5 +22,5 @@ COPY . .
 # Expose server port
 EXPOSE 5000
 
-# Launch Flask application using Gunicorn WSGI server
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "app:app"]
+# Launch application runner
+CMD ["python", "run.py"]

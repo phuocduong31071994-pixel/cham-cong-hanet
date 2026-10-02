@@ -375,53 +375,61 @@ def seed_data():
 
 # Create DB Tables
 with app.app_context():
-    db.create_all()
-    # Auto-drop unique pin constraint in PostgreSQL and ensure avatar_url column exists
-    if "postgresql" in app.config.get('SQLALCHEMY_DATABASE_URI', ''):
-        from sqlalchemy import text
-        # 1. Drop unique pin constraint on employees
-        try:
-            db.session.execute(text("ALTER TABLE employees DROP CONSTRAINT IF EXISTS employees_pin_key CASCADE;"))
-            db.session.commit()
-            logging.info("PostgreSQL Schema Check: Dropped unique pin constraint on employees.")
-        except Exception as db_err:
-            db.session.rollback()
-            logging.warning(f"Note: Could not drop constraint on employees (might not exist): {db_err}")
-
-        # 2. Ensure avatar_url exists in checkins
-        try:
-            db.session.execute(text("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
-            db.session.commit()
-            logging.info("PostgreSQL Schema Check: Ensured checkins.avatar_url column exists.")
-        except Exception as db_err:
-            db.session.rollback()
-            logging.error(f"Error ensuring checkins.avatar_url column exists: {db_err}")
-
-        # 3. Ensure avatar_url exists in employee
-        try:
-            db.session.execute(text("ALTER TABLE employee ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
-            db.session.commit()
-            logging.info("PostgreSQL Schema Check: Ensured employee.avatar_url column exists.")
-        except Exception as db_err:
-            db.session.rollback()
-            logging.error(f"Error ensuring employee.avatar_url column exists: {db_err}")
-    seed_data()
-    
-    # One-off clean up: Delete all Leave and WFH requests and checkin records
     try:
-        deleted_reqs = AttendanceRequest.query.filter(AttendanceRequest.request_type.in_(['leave', 'wfh'])).delete(synchronize_session=False)
-        deleted_checkins = CheckIn.query.filter(
-            (CheckIn.place_name.in_(['Nghỉ phép (P)', 'Work From Home (H)', 'Work From Home', 'Nghỉ phép'])) |
-            (CheckIn.device_name.like('%Nghỉ phép%')) |
-            (CheckIn.device_name.like('%Work From Home%')) |
-            (CheckIn.device_name.like('%Work from home%'))
-        ).delete(synchronize_session=False)
-        db.session.commit()
-        if deleted_reqs > 0 or deleted_checkins > 0:
-            logging.info(f"Database clean: deleted {deleted_reqs} leave/wfh requests and {deleted_checkins} simulated checkins.")
-    except Exception as clean_err:
-        db.session.rollback()
-        logging.error(f"Error cleaning up database: {clean_err}")
+        db.create_all()
+        # Auto-drop unique pin constraint in PostgreSQL and ensure avatar_url column exists
+        if "postgresql" in app.config.get('SQLALCHEMY_DATABASE_URI', ''):
+            from sqlalchemy import text
+            # 1. Drop unique pin constraint on employees
+            try:
+                db.session.execute(text("ALTER TABLE employees DROP CONSTRAINT IF EXISTS employees_pin_key CASCADE;"))
+                db.session.commit()
+                logging.info("PostgreSQL Schema Check: Dropped unique pin constraint on employees.")
+            except Exception as db_err:
+                db.session.rollback()
+                logging.warning(f"Note: Could not drop constraint on employees (might not exist): {db_err}")
+
+            # 2. Ensure avatar_url exists in checkins
+            try:
+                db.session.execute(text("ALTER TABLE checkins ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
+                db.session.commit()
+                logging.info("PostgreSQL Schema Check: Ensured checkins.avatar_url column exists.")
+            except Exception as db_err:
+                db.session.rollback()
+                logging.error(f"Error ensuring checkins.avatar_url column exists: {db_err}")
+
+            # 3. Ensure avatar_url exists in employee
+            try:
+                db.session.execute(text("ALTER TABLE employee ADD COLUMN IF NOT EXISTS avatar_url TEXT;"))
+                db.session.commit()
+                logging.info("PostgreSQL Schema Check: Ensured employee.avatar_url column exists.")
+            except Exception as db_err:
+                db.session.rollback()
+                logging.error(f"Error ensuring employee.avatar_url column exists: {db_err}")
+        seed_data()
+        
+        # One-off clean up: Delete all Leave and WFH requests and checkin records
+        try:
+            deleted_reqs = AttendanceRequest.query.filter(AttendanceRequest.request_type.in_(['leave', 'wfh'])).delete(synchronize_session=False)
+            deleted_checkins = CheckIn.query.filter(
+                (CheckIn.place_name.in_(['Nghỉ phép (P)', 'Work From Home (H)', 'Work From Home', 'Nghỉ phép'])) |
+                (CheckIn.device_name.like('%Nghỉ phép%')) |
+                (CheckIn.device_name.like('%Work From Home%')) |
+                (CheckIn.device_name.like('%Work from home%'))
+            ).delete(synchronize_session=False)
+            db.session.commit()
+            if deleted_reqs > 0 or deleted_checkins > 0:
+                logging.info(f"Database clean: deleted {deleted_reqs} leave/wfh requests and {deleted_checkins} simulated checkins.")
+        except Exception as clean_err:
+            db.session.rollback()
+            logging.error(f"Error cleaning up database: {clean_err}")
+    except Exception as init_err:
+        logging.error(f"Error during database initialization at startup: {init_err}")
+
+# Health Check Route for Railway / Docker
+@app.route('/health')
+def health_check():
+    return jsonify({"status": "healthy"}), 200
 
 # Webpage Route
 @app.route('/')
